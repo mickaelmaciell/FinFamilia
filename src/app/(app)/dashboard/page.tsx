@@ -151,12 +151,10 @@ export default function DashboardPage() {
       {chartData.some(d => d.receitas > 0 || d.despesas > 0) && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-green-200">Últimos 7 dias</h3>
-              <div className="flex items-center gap-3 text-xs text-green-700">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Receitas</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Despesas</span>
-              </div>
+            <h3 className="text-sm font-semibold text-green-200">Últimos 7 dias</h3>
+            <div className="flex items-center gap-3 text-xs text-green-700">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Receitas</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Despesas</span>
             </div>
           </CardHeader>
           <CardContent className="px-2 pb-4 pt-2">
@@ -191,12 +189,10 @@ export default function DashboardPage() {
         {/* Accounts */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-green-200">Contas</h3>
-              <Link href="/accounts" className="text-xs text-green-600 hover:text-green-400 flex items-center gap-1 transition-colors">
-                Ver todas <ArrowUpRight size={12} />
-              </Link>
-            </div>
+            <h3 className="text-sm font-semibold text-green-200">Contas</h3>
+            <Link href="/accounts" className="text-xs text-green-600 hover:text-green-400 flex items-center gap-1 transition-colors">
+              Ver todas <ArrowUpRight size={12} />
+            </Link>
           </CardHeader>
           <CardContent className="p-0">
             {accounts.length === 0 ? (
@@ -254,12 +250,10 @@ export default function DashboardPage() {
           /* Goals */
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-green-200">Metas</h3>
-                <Link href="/goals" className="text-xs text-green-600 hover:text-green-400 flex items-center gap-1 transition-colors">
-                  Ver todas <ArrowUpRight size={12} />
-                </Link>
-              </div>
+              <h3 className="text-sm font-semibold text-green-200">Metas</h3>
+              <Link href="/goals" className="text-xs text-green-600 hover:text-green-400 flex items-center gap-1 transition-colors">
+                Ver todas <ArrowUpRight size={12} />
+              </Link>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               {goals.length === 0 ? (
@@ -292,12 +286,10 @@ export default function DashboardPage() {
       {/* Recent transactions */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-green-200">Últimas transações</h3>
-            <Link href="/transactions" className="text-xs text-green-600 hover:text-green-400 flex items-center gap-1 transition-colors">
-              Ver todas <ArrowUpRight size={12} />
-            </Link>
-          </div>
+          <h3 className="text-sm font-semibold text-green-200">Últimas transações</h3>
+          <Link href="/transactions" className="text-xs text-green-600 hover:text-green-400 flex items-center gap-1 transition-colors">
+            Ver todas <ArrowUpRight size={12} />
+          </Link>
         </CardHeader>
         <CardContent className="p-0">
           {recentTx.length === 0 ? (
