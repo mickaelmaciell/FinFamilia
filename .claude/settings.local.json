@@ -5,7 +5,19 @@
       "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__get_project_url",
       "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__get_publishable_keys",
       "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__list_tables",
-      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-turbopack --yes)"
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-turbopack --yes)",
+      "Bash(npm install *)",
+      "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__apply_migration",
+      "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__list_organizations",
+      "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__get_cost",
+      "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__confirm_cost",
+      "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__create_project",
+      "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__execute_sql",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(netstat -ano)",
+      "PowerShell(Stop-Process -Id 13892 -Force)"
     ]
   }
 }
