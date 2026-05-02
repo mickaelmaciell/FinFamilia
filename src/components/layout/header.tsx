@@ -51,7 +51,6 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
       return
     }
 
-    // Manually fetch household and inviter names to avoid foreign key join errors
     const householdIds = [...new Set(invitesData.map(i => i.household_id))]
     const inviterIds = [...new Set(invitesData.map(i => i.invited_by))]
 
@@ -78,22 +77,12 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
     const supabase = createClient()
     const channel = supabase
       .channel('realtime_invitations')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'household_invitations',
-        },
-        () => {
-          loadInvites()
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'household_invitations' }, () => {
+        loadInvites()
+      })
       .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [loadInvites])
 
   async function acceptInvite(token: string) {
@@ -126,15 +115,15 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
   const unread = invites.length
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between px-4 h-14 bg-[#080d08]/90 border-b border-[#1a2e1a] backdrop-blur-xl">
+    <header className="sticky top-0 z-20 flex items-center justify-between px-4 h-14 bg-[#0e1a0e]/95 border-b border-[#1f3320] backdrop-blur-xl">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-xl hover:bg-[#1a2e1a] text-green-600 hover:text-green-400 transition-colors active:scale-95"
+          className="lg:hidden p-2 rounded-xl hover:bg-[#1a2e1a] text-[#4a7a4a] hover:text-[#7ab87a] transition-colors active:scale-95"
         >
           <Menu size={20} />
         </button>
-        <h1 className="text-base font-semibold text-green-100">{title}</h1>
+        <h1 className="text-base font-semibold text-[#c8e6c8]">{title}</h1>
       </div>
 
       <div className="flex items-center gap-2">
@@ -142,11 +131,11 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
         <div className="relative">
           <button
             onClick={() => { setShowNotifs(v => !v); setShowMenu(false) }}
-            className="relative p-2 rounded-xl hover:bg-[#1a2e1a] text-green-700 hover:text-green-400 transition-colors"
+            className="relative p-2 rounded-xl hover:bg-[#1a2e1a] text-[#4a7a4a] hover:text-[#7ab87a] transition-colors"
           >
             <Bell size={18} />
             {unread > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full text-[9px] font-bold text-black flex items-center justify-center">
+              <span className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full text-[9px] font-bold text-[#0e1a0e] flex items-center justify-center">
                 {unread}
               </span>
             )}
@@ -155,47 +144,47 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
           {showNotifs && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowNotifs(false)} />
-              <div className="absolute right-0 top-full mt-2 w-80 bg-[#0f1a0f] border border-[#1a2e1a] rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
-                <div className="px-4 py-3 border-b border-[#1a2e1a]">
-                  <p className="text-sm font-semibold text-green-200">Notificações</p>
+              <div className="absolute right-0 top-full mt-2 w-80 bg-[#132213] border border-[#1f3a1f] rounded-xl shadow-2xl z-20 overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#1f3a1f]">
+                  <p className="text-sm font-semibold text-[#a0c8a0]">Notificações</p>
                 </div>
 
                 {notifError ? (
                   <div className="px-4 py-6 text-center">
-                    <X size={24} className="text-red-900 mx-auto mb-2" />
+                    <X size={24} className="text-red-400 mx-auto mb-2" />
                     <p className="text-sm text-red-400">Erro: {notifError}</p>
-                    <p className="text-xs text-red-500 mt-2">Falha de RLS no banco.</p>
+                    <p className="text-xs text-red-600 mt-1">Falha de permissão no banco.</p>
                   </div>
                 ) : invites.length === 0 ? (
                   <div className="px-4 py-6 text-center">
-                    <Bell size={24} className="text-green-900 mx-auto mb-2" />
-                    <p className="text-sm text-green-700">Nenhuma notificação</p>
+                    <Bell size={24} className="text-[#2d4a2d] mx-auto mb-2" />
+                    <p className="text-sm text-[#4a7a4a]">Nenhuma notificação</p>
                   </div>
                 ) : (
                   <ul>
                     {invites.map(inv => (
-                      <li key={inv.id} className="px-4 py-3 border-b border-[#1a2e1a] last:border-0">
+                      <li key={inv.id} className="px-4 py-3 border-b border-[#1f3a1f] last:border-0">
                         <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-green-900/30 border border-green-800/30 flex items-center justify-center shrink-0 mt-0.5">
-                            <Users size={14} className="text-green-400" />
+                          <div className="w-8 h-8 rounded-lg bg-green-900/20 border border-green-800/20 flex items-center justify-center shrink-0 mt-0.5">
+                            <Users size={14} className="text-green-500" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-green-200 leading-snug">
-                              <span className="font-medium">{inv.inviter_name}</span> te convidou para{' '}
-                              <span className="font-medium text-green-300">{inv.household_name}</span>
+                            <p className="text-sm text-[#c8e6c8] leading-snug">
+                              <span className="font-medium text-green-400">{inv.inviter_name}</span> te convidou para{' '}
+                              <span className="font-medium text-[#c8e6c8]">{inv.household_name}</span>
                             </p>
                             <div className="flex gap-2 mt-2">
                               <button
                                 onClick={() => acceptInvite(inv.token)}
                                 disabled={accepting === inv.token}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-700/30 border border-green-700/40 text-xs text-green-300 hover:bg-green-700/50 transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-700/30 border border-green-700/40 text-xs font-medium text-green-300 hover:bg-green-700/50 transition-colors disabled:opacity-50"
                               >
                                 <Check size={11} />
                                 {accepting === inv.token ? 'Aceitando...' : 'Aceitar'}
                               </button>
                               <button
                                 onClick={() => declineInvite(inv.id)}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-900/20 border border-red-900/30 text-xs text-red-400 hover:bg-red-900/30 transition-colors"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-transparent border border-[#2d4a2d] text-xs text-[#5a8a5a] hover:bg-[#1a2e1a] transition-colors"
                               >
                                 <X size={11} /> Recusar
                               </button>
@@ -220,7 +209,7 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
             {avatarUrl ? (
               <img src={avatarUrl} alt={userName} className="w-8 h-8 rounded-lg object-cover" />
             ) : (
-              <div className="w-8 h-8 rounded-lg bg-green-900/50 border border-green-800/40 flex items-center justify-center text-xs font-bold text-green-300">
+              <div className="w-8 h-8 rounded-lg bg-green-900/40 border border-green-800/30 flex items-center justify-center text-xs font-bold text-green-400">
                 {initials}
               </div>
             )}
@@ -229,13 +218,13 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
           {showMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-              <div className="absolute right-0 top-full mt-2 w-48 bg-[#0f1a0f] border border-[#1a2e1a] rounded-xl shadow-2xl z-20 overflow-hidden animate-fade-in">
-                <div className="px-4 py-3 border-b border-[#1a2e1a]">
-                  <p className="text-sm font-medium text-green-200 truncate">{userName}</p>
+              <div className="absolute right-0 top-full mt-2 w-48 bg-[#132213] border border-[#1f3a1f] rounded-xl shadow-2xl z-20 overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#1f3a1f]">
+                  <p className="text-sm font-medium text-[#a0c8a0] truncate">{userName}</p>
                 </div>
                 <button
                   onClick={() => { setShowMenu(false); router.push('/settings') }}
-                  className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-green-400 hover:bg-[#1a2e1a] transition-colors"
+                  className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-[#7ab87a] hover:bg-[#1a2e1a] transition-colors"
                 >
                   <User size={15} /> Perfil
                 </button>
