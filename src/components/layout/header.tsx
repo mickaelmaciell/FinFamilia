@@ -33,6 +33,7 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
     const { data } = await supabase
       .from('household_invitations')
       .select('id, token, household:households(name), inviter:profiles(full_name)')
+      .eq('email', user.email.toLowerCase())
       .eq('status', 'pending')
       .gt('expires_at', new Date().toISOString())
 

@@ -68,7 +68,7 @@ export default function HouseholdPage() {
     setInviting(true)
     const supabase = createClient()
     const { error } = await supabase.from('household_invitations').insert({
-      household_id: household.id, invited_by: currentUserId, email: inviteEmail.trim()
+      household_id: household.id, invited_by: currentUserId, email: inviteEmail.trim().toLowerCase()
     })
     setInviting(false)
     if (error) { toast(error.message, 'error'); return }
