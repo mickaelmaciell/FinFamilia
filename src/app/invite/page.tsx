@@ -21,7 +21,8 @@ function InviteContent() {
     const supabase = createClient()
     Promise.all([
       supabase.auth.getUser(),
-      supabase.rpc('get_invitation_preview', { p_token: token }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.rpc as any)('get_invitation_preview', { p_token: token }),
     ]).then(([{ data: { user } }, { data: rows, error }]) => {
       if (error || !rows || rows.length === 0) {
         setStatus('error'); setErrorMsg('Convite não encontrado.'); return
@@ -44,7 +45,8 @@ function InviteContent() {
     }
     setAccepting(true)
     const supabase = createClient()
-    const { data: result, error } = await supabase.rpc('accept_invitation', { p_token: token })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: result, error } = await (supabase.rpc as any)('accept_invitation', { p_token: token })
     setAccepting(false)
     if (error) { setErrorMsg(error.message); setStatus('error'); return }
     if (result === 'invalid') { setErrorMsg('Convite inválido ou expirado.'); setStatus('error'); return }

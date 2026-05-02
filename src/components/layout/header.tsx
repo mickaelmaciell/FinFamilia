@@ -51,7 +51,8 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
   async function acceptInvite(token: string) {
     setAccepting(token)
     const supabase = createClient()
-    const { data: result } = await supabase.rpc('accept_invitation', { p_token: token })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: result } = await (supabase.rpc as any)('accept_invitation', { p_token: token })
     setAccepting(null)
     if (result === 'success' || result === 'already_member') {
       await loadInvites()
