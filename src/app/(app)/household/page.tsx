@@ -61,7 +61,28 @@ export default function HouseholdPage() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+
+    const supabase = createClient()
+    const channel = supabase
+      .channel('realtime_household_updates')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'household_members' },
+        () => { load() }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'household_invitations' },
+        () => { load() }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [load])
 
   async function sendInvite() {
     if (!household || !inviteEmail.trim()) return

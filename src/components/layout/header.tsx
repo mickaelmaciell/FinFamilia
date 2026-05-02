@@ -24,30 +24,77 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
   const [showNotifs, setShowNotifs] = useState(false)
   const [invites, setInvites] = useState<PendingInvite[]>([])
   const [accepting, setAccepting] = useState<string | null>(null)
+  const [notifError, setNotifError] = useState<string | null>(null)
 
   const loadInvites = useCallback(async () => {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user?.email) return
 
-    const { data } = await supabase
+    const { data: invitesData, error } = await supabase
       .from('household_invitations')
-      .select('id, token, household:households(name), inviter:profiles(full_name)')
+      .select('*')
       .ilike('email', user.email)
       .eq('status', 'pending')
       .gt('expires_at', new Date().toISOString())
 
-    if (!data) return
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setInvites(data.map((r: any) => ({
-      id: r.id,
-      token: r.token,
-      household_name: r.household?.name || 'Lar',
-      inviter_name: r.inviter?.full_name || 'Alguém',
-    })))
+    if (error) {
+      console.error('Error fetching invites:', JSON.stringify(error, null, 2))
+      setNotifError(error.message || JSON.stringify(error))
+      return
+    }
+
+    setNotifError(null)
+
+    if (!invitesData || invitesData.length === 0) {
+      setInvites([])
+      return
+    }
+
+    // Manually fetch household and inviter names to avoid foreign key join errors
+    const householdIds = [...new Set(invitesData.map(i => i.household_id))]
+    const inviterIds = [...new Set(invitesData.map(i => i.invited_by))]
+
+    const [{ data: households }, { data: profiles }] = await Promise.all([
+      supabase.from('households').select('id, name').in('id', householdIds),
+      supabase.from('profiles').select('id, full_name').in('id', inviterIds)
+    ])
+
+    setInvites(invitesData.map(inv => {
+      const hh = households?.find(h => h.id === inv.household_id)
+      const prof = profiles?.find(p => p.id === inv.invited_by)
+      return {
+        id: inv.id,
+        token: inv.token,
+        household_name: hh?.name || 'Lar',
+        inviter_name: prof?.full_name || 'Alguém',
+      }
+    }))
   }, [])
 
-  useEffect(() => { loadInvites() }, [loadInvites])
+  useEffect(() => {
+    loadInvites()
+
+    const supabase = createClient()
+    const channel = supabase
+      .channel('realtime_invitations')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'household_invitations',
+        },
+        () => {
+          loadInvites()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [loadInvites])
 
   async function acceptInvite(token: string) {
     setAccepting(token)
@@ -113,7 +160,13 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
                   <p className="text-sm font-semibold text-green-200">Notificações</p>
                 </div>
 
-                {invites.length === 0 ? (
+                {notifError ? (
+                  <div className="px-4 py-6 text-center">
+                    <X size={24} className="text-red-900 mx-auto mb-2" />
+                    <p className="text-sm text-red-400">Erro: {notifError}</p>
+                    <p className="text-xs text-red-500 mt-2">Falha de RLS no banco.</p>
+                  </div>
+                ) : invites.length === 0 ? (
                   <div className="px-4 py-6 text-center">
                     <Bell size={24} className="text-green-900 mx-auto mb-2" />
                     <p className="text-sm text-green-700">Nenhuma notificação</p>
