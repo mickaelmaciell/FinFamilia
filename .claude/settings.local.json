@@ -17,7 +17,8 @@
       "Bash(npm run *)",
       "mcp__Claude_Preview__preview_start",
       "Bash(netstat -ano)",
-      "PowerShell(Stop-Process -Id 13892 -Force)"
+      "PowerShell(Stop-Process -Id 13892 -Force)",
+      "mcp__90981513-67d0-43ac-bf31-f2ff1ee489c5__list_edge_functions"
     ]
   }
 }

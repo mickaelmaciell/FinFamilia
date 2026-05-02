@@ -34,9 +34,11 @@ export default function RegisterPage() {
       return
     }
 
-    // If session exists immediately → email confirmation is disabled → go to dashboard
+    // If session exists immediately → email confirmation is disabled → go to redirect or dashboard
     if (data.session) {
-      router.push('/dashboard')
+      const params = new URLSearchParams(window.location.search)
+      const redirect = params.get('redirect') || '/dashboard'
+      router.push(redirect)
       router.refresh()
       return
     }
