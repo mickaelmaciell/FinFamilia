@@ -8,12 +8,11 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 export const metadata: Metadata = {
   title: 'FinFamília – Gestão Financeira Familiar',
   description: 'Gerencie as finanças da sua família de forma simples e colaborativa.',
-  manifest: '/manifest.json',
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'FinFamília' },
 }
 
 export const viewport: Viewport = {
-  themeColor: '#080d08',
+  themeColor: '#F0EDE6',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,

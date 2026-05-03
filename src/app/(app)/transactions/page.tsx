@@ -2,14 +2,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
-import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
-import { Plus, Search, Filter, Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Search, Filter, Pencil, Trash2, ArrowUpRight, ArrowDownRight, ArrowLeftRight, X, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -82,7 +80,6 @@ export default function TransactionsPage() {
     if (filterType) query = query.eq('type', filterType as 'income' | 'expense' | 'transfer')
     if (filterAccount) query = query.eq('account_id', filterAccount)
     if (filterCategory) query = query.eq('category_id', filterCategory)
-
     query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
 
     const { data, count } = await query
@@ -108,16 +105,7 @@ export default function TransactionsPage() {
 
   function openEdit(tx: TxWithRelations) {
     setEditing(tx)
-    reset({
-      type: tx.type,
-      amount: String(tx.amount),
-      description: tx.description,
-      account_id: tx.account_id,
-      category_id: tx.category_id || '',
-      to_account_id: tx.to_account_id || '',
-      date: tx.date,
-      notes: tx.notes || '',
-    })
+    reset({ type: tx.type, amount: String(tx.amount), description: tx.description, account_id: tx.account_id, category_id: tx.category_id || '', to_account_id: tx.to_account_id || '', date: tx.date, notes: tx.notes || '' })
     setShowModal(true)
   }
 
@@ -126,19 +114,20 @@ export default function TransactionsPage() {
     setSaving(true)
     const supabase = createClient()
     const payload = {
-      household_id: householdId,
-      user_id: userId,
-      type: data.type,
+      household_id: householdId, user_id: userId, type: data.type,
       amount: parseFloat(data.amount.replace(',', '.')),
-      description: data.description,
-      account_id: data.account_id,
+      description: data.description, account_id: data.account_id,
       category_id: data.category_id || null,
       to_account_id: data.type === 'transfer' ? (data.to_account_id || null) : null,
-      date: data.date,
-      notes: data.notes || null,
+      date: data.date, notes: data.notes || null,
     }
     if (editing) {
-      const { error } = await supabase.from('fin_transactions').update({ type: payload.type, amount: payload.amount, description: payload.description, account_id: payload.account_id, category_id: payload.category_id, to_account_id: payload.to_account_id, date: payload.date, notes: payload.notes, updated_at: new Date().toISOString() }).eq('id', editing.id)
+      const { error } = await supabase.from('fin_transactions').update({
+        type: payload.type, amount: payload.amount, description: payload.description,
+        account_id: payload.account_id, category_id: payload.category_id,
+        to_account_id: payload.to_account_id, date: payload.date,
+        notes: payload.notes, updated_at: new Date().toISOString()
+      }).eq('id', editing.id)
       if (error) { toast(error.message, 'error'); setSaving(false); return }
       toast('Transação atualizada!')
     } else {
@@ -146,49 +135,55 @@ export default function TransactionsPage() {
       if (error) { toast(error.message, 'error'); setSaving(false); return }
       toast('Transação adicionada!')
     }
-    setSaving(false)
-    setShowModal(false)
-    load()
+    setSaving(false); setShowModal(false); load()
   }
 
   async function deleteTransaction(id: string) {
     const supabase = createClient()
     const { error } = await supabase.from('fin_transactions').delete().eq('id', id)
     if (error) { toast(error.message, 'error'); return }
-    toast('Transação excluída!', 'info')
-    setDeleting(null)
-    load()
+    toast('Transação excluída!', 'info'); setDeleting(null); load()
   }
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const filteredCategories = categories.filter(c => txType !== 'transfer' ? c.type === (txType === 'income' ? 'income' : 'expense') : false)
+  const hasFilters = search || filterType || filterAccount || filterCategory
 
   return (
-    <div className="px-4 py-4 max-w-3xl mx-auto lg:px-6 lg:py-6">
-      {/* Top actions */}
-      <div className="flex items-center gap-2 mb-4">
+    <div className="px-4 py-5 max-w-3xl mx-auto lg:px-6 lg:py-6 space-y-4">
+
+      {/* ── Barra de ações ── */}
+      <div className="flex items-center gap-2">
+        {/* Campo de busca — branco, texto escuro */}
         <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-green-700 pointer-events-none" />
+          <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8FAA8F] pointer-events-none" />
           <input
             type="text"
             placeholder="Buscar transações..."
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1) }}
-            className="w-full h-10 bg-[#0f1a0f] border border-[#1a2e1a] rounded-xl pl-9 pr-4 text-sm text-green-100 placeholder:text-green-900 focus:outline-none focus:border-green-700"
+            className="w-full h-12 bg-white border border-[#D5CCBE] rounded-xl pl-11 pr-4 text-base text-[#1A2E1A] placeholder:text-[#BBCFBB] focus:outline-none focus:border-[#3A6432] focus:ring-2 focus:ring-[#3A6432]/15 transition-all"
           />
         </div>
-        <Button variant="secondary" size="icon" onClick={() => setShowFilter(!showFilter)} className={showFilter ? 'border-green-700 text-green-400' : ''}>
-          <Filter size={16} />
-        </Button>
-        <Button onClick={openNew} size="icon" className="shrink-0">
-          <Plus size={18} />
-        </Button>
+        <button
+          onClick={() => setShowFilter(!showFilter)}
+          className={`h-12 w-12 rounded-xl flex items-center justify-center border transition-all ${showFilter || hasFilters ? 'bg-[#EEF5EB] border-[#3A6432] text-[#3A6432]' : 'bg-white border-[#D5CCBE] text-[#8FAA8F] hover:border-[#3A6432]/50 hover:text-[#3A6432]'}`}
+        >
+          <Filter size={18} />
+        </button>
+        <button
+          onClick={openNew}
+          className="h-12 w-12 rounded-xl bg-[#3A6432] text-white flex items-center justify-center hover:bg-[#2E5028] transition-colors shadow-sm shrink-0"
+        >
+          <Plus size={20} />
+        </button>
       </div>
 
-      {/* Filters */}
+      {/* ── Filtros ── */}
       {showFilter && (
-        <Card className="mb-4 animate-fade-in">
-          <CardContent className="p-4 grid grid-cols-2 gap-3">
+        <div className="bg-white border border-[#E2DECE] rounded-2xl p-4 shadow-sm space-y-3">
+          <p className="text-sm font-bold text-[#1A2E1A]">Filtrar por</p>
+          <div className="grid grid-cols-2 gap-3">
             <Select label="Tipo" value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1) }}>
               <option value="">Todos os tipos</option>
               <option value="income">Receita</option>
@@ -203,61 +198,107 @@ export default function TransactionsPage() {
               <option value="">Todas as categorias</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
-            <Button variant="ghost" size="sm" onClick={() => { setFilterType(''); setFilterAccount(''); setFilterCategory(''); setSearch(''); setPage(1) }} className="col-span-2 text-xs">
-              <X size={12} /> Limpar filtros
-            </Button>
-          </CardContent>
-        </Card>
+          </div>
+          {hasFilters && (
+            <button
+              onClick={() => { setFilterType(''); setFilterAccount(''); setFilterCategory(''); setSearch(''); setPage(1) }}
+              className="flex items-center gap-1.5 text-sm font-medium text-red-500 hover:text-red-600 transition-colors"
+            >
+              <X size={14} /> Limpar todos os filtros
+            </button>
+          )}
+        </div>
       )}
 
-      {/* Stats row */}
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-green-700">{total} transaç{total === 1 ? 'ão' : 'ões'}</p>
-        <p className="text-xs text-green-700">Página {page} de {Math.max(1, totalPages)}</p>
+      {/* ── Contagem ── */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-[#5A7A5A] font-medium">
+          {total} transaç{total === 1 ? 'ão' : 'ões'} encontrada{total !== 1 ? 's' : ''}
+        </p>
+        {totalPages > 1 && (
+          <p className="text-sm text-[#8FAA8F]">Página {page} de {totalPages}</p>
+        )}
       </div>
 
-      {/* List */}
-      <Card>
+      {/* ── Lista ── */}
+      <div className="bg-white rounded-2xl border border-[#E2DECE] shadow-sm overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center h-32">
-            <div className="w-6 h-6 border-2 border-green-700 border-t-green-400 rounded-full animate-spin" />
+          <div className="space-y-0">
+            {[1, 2, 3, 4, 5].map(n => (
+              <div key={n} className="flex items-center gap-4 px-5 py-4 border-b border-[#F5F2EC] last:border-0 animate-pulse">
+                <div className="w-11 h-11 rounded-xl bg-[#EEF5EB] shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-40 rounded bg-[#EEF5EB]" />
+                  <div className="h-3 w-24 rounded bg-[#F5F2EC]" />
+                </div>
+                <div className="h-5 w-24 rounded bg-[#EEF5EB]" />
+              </div>
+            ))}
           </div>
         ) : txs.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <ArrowLeftRight size={32} className="text-green-900" />
-            <p className="text-sm text-green-700">Nenhuma transação encontrada</p>
-            <Button onClick={openNew} size="sm"><Plus size={14} /> Nova transação</Button>
+          <div className="flex flex-col items-center gap-3 py-14 text-center px-6">
+            <div className="w-14 h-14 rounded-2xl bg-[#EEF5EB] border border-[#C5D9C0] flex items-center justify-center">
+              <ArrowLeftRight size={24} className="text-[#3A6432]" />
+            </div>
+            <p className="text-base font-semibold text-[#1A2E1A]">Nenhuma transação encontrada</p>
+            <p className="text-sm text-[#8FAA8F]">{hasFilters ? 'Tente ajustar os filtros.' : 'Adicione sua primeira transação clicando no botão +'}</p>
+            {!hasFilters && (
+              <button onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#3A6432] text-sm font-semibold text-white hover:bg-[#2E5028] transition-colors mt-1">
+                <Plus size={15} /> Nova transação
+              </button>
+            )}
           </div>
         ) : (
           <ul>
             {txs.map((tx, i) => (
-              <li key={tx.id} className={`flex items-center gap-3 px-4 py-3.5 group active:bg-[#1a2e1a] transition-colors ${i < txs.length - 1 ? 'border-b border-[#1a2e1a]' : ''}`}>
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${tx.type === 'income' ? 'bg-income' : tx.type === 'expense' ? 'bg-expense' : 'bg-transfer'}`}>
-                  {tx.type === 'income' ? <ArrowUpRight size={18} className="text-income" /> : tx.type === 'expense' ? <ArrowDownRight size={18} className="text-expense" /> : <ArrowLeftRight size={18} className="text-transfer" />}
+              <li key={tx.id} className={`flex items-center gap-4 px-5 py-4 hover:bg-[#FAFAF8] transition-colors ${i < txs.length - 1 ? 'border-b border-[#F5F2EC]' : ''}`}>
+                {/* Ícone do tipo */}
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${tx.type === 'income' ? 'bg-[#EEF5EB] border border-[#C5D9C0]' : tx.type === 'expense' ? 'bg-red-50 border border-red-100' : 'bg-blue-50 border border-blue-100'}`}>
+                  {tx.type === 'income'
+                    ? <ArrowUpRight size={20} className="text-[#3A6432]" />
+                    : tx.type === 'expense'
+                      ? <ArrowDownRight size={20} className="text-red-500" />
+                      : <ArrowLeftRight size={20} className="text-blue-500" />}
                 </div>
+
+                {/* Descrição */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-green-200 truncate">{tx.description}</p>
-                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <p className="text-base font-semibold text-[#1A2E1A] truncate">{tx.description}</p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                     {tx.category && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md whitespace-nowrap" style={{ background: tx.category.color + '22', color: tx.category.color }}>
+                      <span className="text-xs px-2 py-0.5 rounded-md font-medium" style={{ background: tx.category.color + '18', color: tx.category.color }}>
                         {tx.category.name}
                       </span>
                     )}
-                    {tx.account && <span className="text-[10px] text-green-800">{tx.account.name}</span>}
-                    <span className="text-[10px] text-green-900">{formatDate(tx.date)}</span>
-                    {tx.profile && tx.profile.full_name && <span className="text-[10px] text-green-900">• {tx.profile.full_name.split(' ')[0]}</span>}
+                    {tx.account && (
+                      <span className="text-sm text-[#8FAA8F]">{tx.account.name}</span>
+                    )}
+                    <span className="text-sm text-[#8FAA8F]">{formatDate(tx.date)}</span>
+                    {tx.profile?.full_name && (
+                      <span className="text-xs text-[#BBCFBB]">· {tx.profile.full_name.split(' ')[0]}</span>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <p className={`text-sm font-bold tabular-nums ${tx.type === 'income' ? 'text-income' : tx.type === 'expense' ? 'text-expense' : 'text-transfer'}`}>
+
+                {/* Valor + ações */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <p className={`text-base font-bold tabular-nums ${tx.type === 'income' ? 'text-[#3A6432]' : tx.type === 'expense' ? 'text-red-500' : 'text-blue-600'}`}>
                     {tx.type === 'income' ? '+' : tx.type === 'expense' ? '-' : ''}{formatCurrency(Number(tx.amount))}
                   </p>
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
-                    <button onClick={() => openEdit(tx)} className="p-1.5 rounded-lg hover:bg-[#1a2e1a] text-green-700 hover:text-green-400 transition-colors">
-                      <Pencil size={13} />
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEdit(tx)}
+                      className="p-2 rounded-lg hover:bg-[#EEF5EB] text-[#8FAA8F] hover:text-[#3A6432] transition-colors"
+                      title="Editar"
+                    >
+                      <Pencil size={14} />
                     </button>
-                    <button onClick={() => setDeleting(tx.id)} className="p-1.5 rounded-lg hover:bg-red-900/20 text-green-700 hover:text-red-400 transition-colors">
-                      <Trash2 size={13} />
+                    <button
+                      onClick={() => setDeleting(tx.id)}
+                      className="p-2 rounded-lg hover:bg-red-50 text-[#8FAA8F] hover:text-red-500 transition-colors"
+                      title="Excluir"
+                    >
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -265,33 +306,46 @@ export default function TransactionsPage() {
             ))}
           </ul>
         )}
-      </Card>
+      </div>
 
-      {/* Pagination */}
+      {/* ── Paginação ── */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <Button variant="secondary" size="icon" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
-            <ChevronLeft size={16} />
-          </Button>
-          <span className="text-sm text-green-600">{page} / {totalPages}</span>
-          <Button variant="secondary" size="icon" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
-            <ChevronRight size={16} />
-          </Button>
+        <div className="flex items-center justify-center gap-3 py-2">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="h-10 w-10 rounded-xl flex items-center justify-center bg-white border border-[#D5CCBE] text-[#5A7A5A] hover:border-[#3A6432] hover:text-[#3A6432] disabled:opacity-40 disabled:pointer-events-none transition-all"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <span className="text-sm font-semibold text-[#1A2E1A] px-2">{page} / {totalPages}</span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="h-10 w-10 rounded-xl flex items-center justify-center bg-white border border-[#D5CCBE] text-[#5A7A5A] hover:border-[#3A6432] hover:text-[#3A6432] disabled:opacity-40 disabled:pointer-events-none transition-all"
+          >
+            <ChevronRight size={18} />
+          </button>
         </div>
       )}
 
-      {/* Add/Edit Modal */}
+      {/* ── Modal Adicionar / Editar ── */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Editar transação' : 'Nova transação'}>
         <form onSubmit={handleSubmit(onSubmit)} className="p-5 flex flex-col gap-4">
-          {/* Type selector */}
+          {/* Tipo de transação */}
           <div className="grid grid-cols-3 gap-2">
             {(['expense', 'income', 'transfer'] as const).map(t => (
-              <button key={t} type="button" onClick={() => setValue('type', t)}
-                className={`py-2.5 rounded-xl text-xs font-semibold transition-all border ${txType === t
-                  ? t === 'income' ? 'bg-income border-green-700/50 text-green-400'
-                  : t === 'expense' ? 'bg-expense border-red-700/50 text-red-400'
-                  : 'bg-transfer border-blue-700/50 text-blue-400'
-                  : 'border-[#1a2e1a] text-green-700 hover:bg-[#1a2e1a]'}`}>
+              <button
+                key={t} type="button" onClick={() => setValue('type', t)}
+                className={`py-3 rounded-xl text-sm font-bold transition-all border ${txType === t
+                  ? t === 'income'
+                    ? 'bg-[#EEF5EB] border-[#3A6432] text-[#3A6432]'
+                    : t === 'expense'
+                      ? 'bg-red-50 border-red-400 text-red-600'
+                      : 'bg-blue-50 border-blue-400 text-blue-600'
+                  : 'border-[#E2DECE] text-[#5A7A5A] bg-white hover:bg-[#F5F2EC]'
+                }`}
+              >
                 {TYPE_LABELS[t]}
               </button>
             ))}
@@ -319,6 +373,7 @@ export default function TransactionsPage() {
           )}
           <Input label="Data" type="date" {...register('date')} />
           <Input label="Observações (opcional)" placeholder="Detalhes adicionais..." {...register('notes')} />
+
           <div className="flex gap-3 pt-1">
             <Button type="button" variant="secondary" onClick={() => setShowModal(false)} className="flex-1">Cancelar</Button>
             <Button type="submit" loading={saving} className="flex-1">{editing ? 'Salvar' : 'Adicionar'}</Button>
@@ -326,13 +381,23 @@ export default function TransactionsPage() {
         </form>
       </Modal>
 
-      {/* Delete confirm */}
+      {/* ── Modal Confirmar Exclusão ── */}
       <Modal open={!!deleting} onClose={() => setDeleting(null)} title="Excluir transação" size="sm">
         <div className="p-5 flex flex-col gap-4">
-          <p className="text-sm text-green-400">Tem certeza que deseja excluir esta transação? Esta ação não pode ser desfeita.</p>
+          <div className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-xl p-3">
+            <AlertTriangle size={18} className="text-red-500 shrink-0" />
+            <p className="text-sm text-red-600">
+              Tem certeza? Esta ação <span className="font-semibold">não pode ser desfeita</span>.
+            </p>
+          </div>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setDeleting(null)} className="flex-1">Cancelar</Button>
-            <Button variant="destructive" onClick={() => deleting && deleteTransaction(deleting)} className="flex-1">Excluir</Button>
+            <Button
+              onClick={() => deleting && deleteTransaction(deleting)}
+              className="flex-1 !bg-red-500 hover:!bg-red-600 text-white border-0"
+            >
+              Excluir
+            </Button>
           </div>
         </div>
       </Modal>

@@ -8,47 +8,49 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   loading?: boolean
 }
 
-const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
-  className, variant = 'primary', size = 'md', loading, disabled, children, ...props
-}, ref) => {
+const Button = forwardRef<HTMLButtonElement, ButtonProps>((
+  { className, variant = 'primary', size = 'md', loading, disabled, children, ...props },
+  ref
+) => {
   const base = [
-    'inline-flex items-center justify-center gap-2 font-medium transition-all duration-150',
+    'inline-flex items-center justify-center gap-2 font-semibold transition-all duration-150',
     'select-none cursor-pointer focus-visible:outline-none focus-visible:ring-2',
-    'focus-visible:ring-green-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+    'focus-visible:ring-[#3A6432]/40 focus-visible:ring-offset-2',
     'disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none',
     'active:scale-[0.97]',
   ].join(' ')
 
   const variants: Record<string, string> = {
+    // Botão primário: verde floresta sobre branco
     primary: [
-      'bg-green-600 hover:bg-green-500 active:bg-green-700',
+      'bg-[#3A6432] hover:bg-[#2E5028] active:bg-[#243D22]',
       'text-white rounded-xl',
-      'shadow-[0_1px_2px_rgba(0,0,0,.4),0_0_0_1px_rgba(22,163,74,.2)_inset]',
-      'hover:shadow-[0_1px_2px_rgba(0,0,0,.4),0_0_0_1px_rgba(22,163,74,.3)_inset,0_0_16px_rgba(22,163,74,.15)]',
+      'shadow-sm hover:shadow-md',
     ].join(' '),
+    // Botão secundário: fundo creme claro com texto verde
     secondary: [
-      'bg-[#132013] hover:bg-[#172617] active:bg-[#0f1a0f]',
-      'text-green-300 rounded-xl',
-      'border border-[#1e341e] hover:border-[#2a4a2a]',
+      'bg-[#F0EDE6] hover:bg-[#E8E3D8]',
+      'text-[#1A2E1A] rounded-xl',
+      'border border-[#D5CCBE] hover:border-[#C5B9A8]',
     ].join(' '),
-    ghost: 'hover:bg-[#132013] text-green-400 hover:text-green-300 rounded-xl',
+    ghost: 'hover:bg-[#EEF5EB] text-[#3A6432] hover:text-[#2E5028] rounded-xl',
     destructive: [
-      'bg-red-950/40 hover:bg-red-950/70',
-      'text-red-400 hover:text-red-300 rounded-xl',
-      'border border-red-900/30 hover:border-red-800/50',
+      'bg-red-50 hover:bg-red-100',
+      'text-red-600 hover:text-red-700 rounded-xl',
+      'border border-red-200 hover:border-red-300',
     ].join(' '),
     outline: [
-      'border border-[#1e341e] hover:border-green-700/40',
-      'text-green-400 hover:text-green-300 hover:bg-[#132013] rounded-xl',
+      'border border-[#D5CCBE] hover:border-[#3A6432]/40',
+      'text-[#3A6432] hover:bg-[#EEF5EB] rounded-xl',
     ].join(' '),
   }
 
   const sizes: Record<string, string> = {
-    sm:      'h-8 px-3 text-xs rounded-lg',
-    md:      'h-10 px-4 text-sm',
-    lg:      'h-12 px-5 text-[15px]',
-    icon:    'h-10 w-10 rounded-xl',
-    'icon-sm': 'h-8 w-8 rounded-lg',
+    sm:        'h-9 px-3.5 text-sm rounded-lg',
+    md:        'h-11 px-4 text-sm',
+    lg:        'h-12 px-5 text-base',
+    icon:      'h-11 w-11 rounded-xl',
+    'icon-sm': 'h-9 w-9 rounded-lg',
   }
 
   return (

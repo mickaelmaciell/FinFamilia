@@ -63,6 +63,12 @@ export interface Database {
         Update: { account_id?: string; category_id?: string | null; type?: 'income' | 'expense'; amount?: number; description?: string; frequency?: 'daily' | 'weekly' | 'monthly' | 'yearly'; next_date?: string; end_date?: string | null; is_active?: boolean; updated_at?: string }
         Relationships: []
       }
+      fin_installments: {
+        Row: { id: string; household_id: string; user_id: string; name: string; type: 'installment' | 'consortium'; installment_amount: number; total_installments: number; paid_installments: number; start_date: string; due_day: number; account_id: string | null; category_id: string | null; color: string; notes: string | null; status: 'active' | 'completed' | 'cancelled'; created_at: string; updated_at: string }
+        Insert: { id?: string; household_id: string; user_id: string; name: string; type?: 'installment' | 'consortium'; installment_amount: number; total_installments: number; paid_installments?: number; start_date: string; due_day?: number; account_id?: string | null; category_id?: string | null; color?: string; notes?: string | null; status?: 'active' | 'completed' | 'cancelled' }
+        Update: { name?: string; type?: 'installment' | 'consortium'; installment_amount?: number; total_installments?: number; paid_installments?: number; start_date?: string; due_day?: number; account_id?: string | null; category_id?: string | null; color?: string; notes?: string | null; status?: 'active' | 'completed' | 'cancelled'; updated_at?: string }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
@@ -81,3 +87,4 @@ export type FinTransaction = Database['public']['Tables']['fin_transactions']['R
 export type FinBudget = Database['public']['Tables']['fin_budgets']['Row']
 export type FinGoal = Database['public']['Tables']['fin_goals']['Row']
 export type FinRecurring = Database['public']['Tables']['fin_recurring']['Row']
+export type FinInstallment = Database['public']['Tables']['fin_installments']['Row']

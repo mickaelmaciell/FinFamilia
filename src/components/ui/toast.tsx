@@ -22,10 +22,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const icons = { success: CheckCircle, error: XCircle, warning: AlertCircle, info: Info }
   const colors = {
-    success: 'border-green-700/50 bg-green-900/80 text-green-300',
-    error: 'border-red-700/50 bg-red-900/80 text-red-300',
-    warning: 'border-yellow-700/50 bg-yellow-900/80 text-yellow-300',
-    info: 'border-blue-700/50 bg-blue-900/80 text-blue-300',
+    success: 'border-[#C5D9C0] bg-white text-[#1A2E1A] [&_svg]:text-[#3A6432]',
+    error:   'border-red-200 bg-white text-[#1A2E1A] [&_svg]:text-red-500',
+    warning: 'border-yellow-200 bg-white text-[#1A2E1A] [&_svg]:text-yellow-600',
+    info:    'border-blue-200 bg-white text-[#1A2E1A] [&_svg]:text-blue-500',
   }
 
   return (

@@ -42,11 +42,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastProvider>
-      <div className="flex h-screen bg-[#080d08] overflow-hidden">
+      <div className="flex h-screen bg-[#F0EDE6] overflow-hidden">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <div className="flex-1 flex flex-col min-w-0 lg:ml-[260px]">
+        <div className="flex-1 flex flex-col min-w-0 lg:ml-[270px]">
           <Header title={title} onMenuClick={() => setSidebarOpen(true)} userName={userName} avatarUrl={avatarUrl} />
-          <main className="flex-1 overflow-y-auto pb-20 lg:pb-6">
+          <main className="flex-1 overflow-y-auto pb-24 lg:pb-8">
             <div className="animate-fade-in">{children}</div>
           </main>
         </div>

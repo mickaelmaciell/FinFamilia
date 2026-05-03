@@ -2,13 +2,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, MONTHS } from '@/lib/utils'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { useToast } from '@/components/ui/toast'
-import { Plus, BarChart3, Pencil, Trash2, ChevronLeft, ChevronRight, Tag } from 'lucide-react'
+import { Plus, BarChart3, Pencil, Trash2, ChevronLeft, ChevronRight, Tag, AlertTriangle } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import type { FinBudget, FinCategory } from '@/types/database'
 
@@ -50,9 +49,8 @@ export default function BudgetsPage() {
     setBudgets((buds as BudgetWithCategory[]) || [])
     setCategories(cats || [])
 
-    // Get actual spending per category this month
-    const start = `${year}-${String(month).padStart(2,'0')}-01`
-    const end = `${year}-${String(month).padStart(2,'0')}-${new Date(year, month, 0).getDate()}`
+    const start = `${year}-${String(month).padStart(2, '0')}-01`
+    const end = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
     const { data: txs } = await supabase.from('fin_transactions')
       .select('category_id, amount').eq('household_id', hid).eq('type', 'expense').gte('date', start).lte('date', end)
     const sm: SpendMap = {}
@@ -65,19 +63,11 @@ export default function BudgetsPage() {
 
   useEffect(() => { load() }, [load])
 
-  function prevMonth() {
-    if (month === 1) { setMonth(12); setYear(y => y - 1) } else setMonth(m => m - 1)
-  }
-  function nextMonth() {
-    if (month === 12) { setMonth(1); setYear(y => y + 1) } else setMonth(m => m + 1)
-  }
+  function prevMonth() { if (month === 1) { setMonth(12); setYear(y => y - 1) } else setMonth(m => m - 1) }
+  function nextMonth() { if (month === 12) { setMonth(1); setYear(y => y + 1) } else setMonth(m => m + 1) }
 
-  function openNew() {
-    setEditing(null); reset({ category_id: '', amount: '' }); setShowModal(true)
-  }
-  function openEdit(b: BudgetWithCategory) {
-    setEditing(b); reset({ category_id: b.category_id, amount: String(b.amount) }); setShowModal(true)
-  }
+  function openNew() { setEditing(null); reset({ category_id: '', amount: '' }); setShowModal(true) }
+  function openEdit(b: BudgetWithCategory) { setEditing(b); reset({ category_id: b.category_id, amount: String(b.amount) }); setShowModal(true) }
 
   async function onSubmit(data: { category_id: string; amount: string }) {
     if (!householdId) return
@@ -106,92 +96,128 @@ export default function BudgetsPage() {
   const totalSpent = budgets.reduce((s, b) => s + (spends[b.category_id] || 0), 0)
 
   return (
-    <div className="px-4 py-4 max-w-2xl mx-auto lg:px-6 lg:py-6 space-y-4">
-      {/* Month nav */}
+    <div className="px-4 py-5 max-w-2xl mx-auto lg:px-6 lg:py-6 space-y-4">
+
+      {/* ── Navegação de mês ── */}
       <div className="flex items-center justify-between">
-        <button onClick={prevMonth} className="p-2 rounded-xl hover:bg-[#1a2e1a] text-green-600 hover:text-green-400 transition-colors active:scale-95">
+        <button onClick={prevMonth} className="p-2.5 rounded-xl hover:bg-[#EEF5EB] text-[#5A7A5A] hover:text-[#3A6432] transition-colors active:scale-95">
           <ChevronLeft size={20} />
         </button>
-        <h2 className="text-base font-semibold text-green-200">{MONTHS[month - 1]} {year}</h2>
-        <button onClick={nextMonth} className="p-2 rounded-xl hover:bg-[#1a2e1a] text-green-600 hover:text-green-400 transition-colors active:scale-95">
+        <h2 className="text-lg font-bold text-[#1A2E1A]">{MONTHS[month - 1]} {year}</h2>
+        <button onClick={nextMonth} className="p-2.5 rounded-xl hover:bg-[#EEF5EB] text-[#5A7A5A] hover:text-[#3A6432] transition-colors active:scale-95">
           <ChevronRight size={20} />
         </button>
       </div>
 
-      {/* Summary */}
+      {/* ── Resumo ── */}
       <div className="grid grid-cols-2 gap-3">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-green-700 mb-1">Orçamento total</p>
-            <p className="text-lg font-bold text-green-300">{formatCurrency(totalBudget)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-green-700 mb-1">Gasto total</p>
-            <p className={`text-lg font-bold ${totalSpent > totalBudget ? 'text-red-400' : 'text-green-300'}`}>{formatCurrency(totalSpent)}</p>
-          </CardContent>
-        </Card>
+        <div className="bg-white border border-[#E2DECE] rounded-2xl p-4 shadow-sm">
+          <p className="text-sm font-medium text-[#5A7A5A] mb-1.5">Orçamento total</p>
+          <p className="text-xl font-bold text-[#1A2E1A]">{formatCurrency(totalBudget)}</p>
+        </div>
+        <div className="bg-white border border-[#E2DECE] rounded-2xl p-4 shadow-sm">
+          <p className="text-sm font-medium text-[#5A7A5A] mb-1.5">Gasto total</p>
+          <p className={`text-xl font-bold ${totalSpent > totalBudget ? 'text-red-500' : 'text-[#3A6432]'}`}>
+            {formatCurrency(totalSpent)}
+          </p>
+        </div>
       </div>
 
-      <div className="flex justify-end">
-        <Button onClick={openNew}><Plus size={16} /> Novo orçamento</Button>
+      {/* ── Ação ── */}
+      <div className="flex justify-between items-center">
+        <p className="text-sm font-medium text-[#5A7A5A]">
+          {budgets.length} orçamento{budgets.length !== 1 ? 's' : ''} definido{budgets.length !== 1 ? 's' : ''}
+        </p>
+        <Button onClick={openNew}>
+          <Plus size={16} /> Novo orçamento
+        </Button>
       </div>
 
+      {/* ── Lista de orçamentos ── */}
       {loading ? (
-        <div className="flex items-center justify-center h-32">
-          <div className="w-6 h-6 border-2 border-green-700 border-t-green-400 rounded-full animate-spin" />
+        <div className="space-y-3">
+          {[1, 2, 3].map(n => (
+            <div key={n} className="bg-white border border-[#E2DECE] rounded-2xl p-4 animate-pulse shadow-sm">
+              <div className="h-4 w-36 rounded bg-[#EEF5EB] mb-3" />
+              <div className="h-2.5 rounded-full bg-[#F0EDE6]" />
+            </div>
+          ))}
         </div>
       ) : budgets.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <BarChart3 size={32} className="text-green-900" />
-            <p className="text-sm text-green-700">Nenhum orçamento para este mês</p>
-            <Button onClick={openNew} size="sm"><Plus size={14} /> Criar orçamento</Button>
-          </CardContent>
-        </Card>
+        <div className="bg-white border border-[#E2DECE] rounded-2xl shadow-sm">
+          <div className="flex flex-col items-center gap-3 py-14 text-center px-6">
+            <div className="w-14 h-14 rounded-2xl bg-[#EEF5EB] border border-[#C5D9C0] flex items-center justify-center">
+              <BarChart3 size={26} className="text-[#3A6432]" />
+            </div>
+            <p className="text-base font-semibold text-[#1A2E1A]">Nenhum orçamento para este mês</p>
+            <p className="text-sm text-[#8FAA8F]">Defina limites por categoria para controlar seus gastos</p>
+            <Button onClick={openNew} className="mt-1">
+              <Plus size={15} /> Criar primeiro orçamento
+            </Button>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           {budgets.map(b => {
             const spent = spends[b.category_id] || 0
-            const pct = Math.min(100, totalBudget > 0 ? (spent / Number(b.amount)) * 100 : 0)
+            const pct = Math.min(100, Number(b.amount) > 0 ? (spent / Number(b.amount)) * 100 : 0)
             const over = spent > Number(b.amount)
+            const remaining = Number(b.amount) - spent
             return (
-              <Card key={b.id} className="group">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      {b.category && (
-                        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: b.category.color + '22' }}>
-                          <Tag size={12} style={{ color: b.category.color }} />
-                        </div>
-                      )}
-                      <p className="text-sm font-medium text-green-200">{b.category?.name || 'Sem categoria'}</p>
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => openEdit(b)} className="p-1.5 rounded-lg hover:bg-[#1a2e1a] text-green-700 hover:text-green-400 transition-colors">
-                        <Pencil size={12} />
-                      </button>
-                      <button onClick={() => setDeleting(b.id)} className="p-1.5 rounded-lg hover:bg-red-900/20 text-green-700 hover:text-red-400 transition-colors">
-                        <Trash2 size={12} />
-                      </button>
+              <div key={b.id} className="bg-white border border-[#E2DECE] rounded-2xl p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    {b.category && (
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: b.category.color + '18', border: `1.5px solid ${b.category.color}40` }}>
+                        <Tag size={15} style={{ color: b.category.color }} />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-base font-bold text-[#1A2E1A]">{b.category?.name || 'Sem categoria'}</p>
+                      <p className="text-xs text-[#8FAA8F]">
+                        {over
+                          ? <span className="text-red-500 font-medium">Excedeu em {formatCurrency(Math.abs(remaining))}</span>
+                          : <span>Restam {formatCurrency(remaining)}</span>
+                        }
+                      </p>
                     </div>
                   </div>
-                  <div className="h-2.5 bg-[#1a2e1a] rounded-full overflow-hidden mb-2">
-                    <div className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${pct}%` }} />
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEdit(b)} className="p-2 rounded-lg hover:bg-[#EEF5EB] text-[#8FAA8F] hover:text-[#3A6432] transition-colors">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => setDeleting(b.id)} className="p-2 rounded-lg hover:bg-red-50 text-[#8FAA8F] hover:text-red-500 transition-colors">
+                      <Trash2 size={14} />
+                    </button>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className={over ? 'text-red-400' : 'text-green-600'}>{formatCurrency(spent)} gasto</span>
-                    <span className="text-green-700">de {formatCurrency(Number(b.amount))}</span>
-                    <span className={`font-medium ${over ? 'text-red-400' : 'text-green-500'}`}>{pct.toFixed(0)}%</span>
-                  </div>
-                </CardContent>
-              </Card>
+                </div>
+
+                {/* Barra de progresso */}
+                <div className="h-3 bg-[#F0EDE6] rounded-full overflow-hidden mb-2">
+                  <div
+                    className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : pct > 80 ? 'bg-yellow-500' : 'bg-[#3A6432]'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-sm">
+                  <span className={`font-semibold ${over ? 'text-red-500' : 'text-[#3A6432]'}`}>
+                    {formatCurrency(spent)} gasto
+                  </span>
+                  <span className="text-[#8FAA8F]">
+                    de {formatCurrency(Number(b.amount))}
+                  </span>
+                  <span className={`font-bold ${over ? 'text-red-500' : pct > 80 ? 'text-yellow-600' : 'text-[#1A2E1A]'}`}>
+                    {pct.toFixed(0)}%
+                  </span>
+                </div>
+              </div>
             )
           })}
         </div>
       )}
 
+      {/* ── Modal criar/editar ── */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Editar orçamento' : 'Novo orçamento'} size="sm">
         <form onSubmit={handleSubmit(onSubmit)} className="p-5 flex flex-col gap-4">
           {!editing && (
@@ -202,8 +228,17 @@ export default function BudgetsPage() {
               ))}
             </Select>
           )}
-          {editing && <p className="text-sm text-green-400 font-medium">{editing.category?.name}</p>}
-          <Input label={`Valor do orçamento para ${MONTHS[month - 1]}`} type="number" step="0.01" min="0.01" placeholder="0,00" {...register('amount', { required: true })} />
+          {editing && (
+            <div className="flex items-center gap-2 p-3 bg-[#EEF5EB] border border-[#C5D9C0] rounded-xl">
+              <Tag size={16} className="text-[#3A6432]" />
+              <p className="text-sm font-bold text-[#1A2E1A]">{editing.category?.name}</p>
+            </div>
+          )}
+          <Input
+            label={`Limite para ${MONTHS[month - 1]} (R$)`}
+            type="number" step="0.01" min="0.01" placeholder="0,00"
+            {...register('amount', { required: true })}
+          />
           <div className="flex gap-3 pt-1">
             <Button type="button" variant="secondary" onClick={() => setShowModal(false)} className="flex-1">Cancelar</Button>
             <Button type="submit" loading={saving} className="flex-1">{editing ? 'Salvar' : 'Criar'}</Button>
@@ -211,12 +246,16 @@ export default function BudgetsPage() {
         </form>
       </Modal>
 
+      {/* ── Modal excluir ── */}
       <Modal open={!!deleting} onClose={() => setDeleting(null)} title="Excluir orçamento" size="sm">
         <div className="p-5 flex flex-col gap-4">
-          <p className="text-sm text-green-400">Excluir este orçamento?</p>
+          <div className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-xl p-3">
+            <AlertTriangle size={17} className="text-red-500 shrink-0" />
+            <p className="text-sm text-red-600">Excluir este orçamento do mês?</p>
+          </div>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setDeleting(null)} className="flex-1">Cancelar</Button>
-            <Button variant="destructive" onClick={() => deleting && deleteBudget(deleting)} className="flex-1">Excluir</Button>
+            <Button onClick={() => deleting && deleteBudget(deleting)} className="flex-1 !bg-red-500 hover:!bg-red-600 text-white border-0">Excluir</Button>
           </div>
         </div>
       </Modal>

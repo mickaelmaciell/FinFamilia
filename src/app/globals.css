@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-/* ─── Theme tokens ──────────────────────────────────────────────────── */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -8,11 +7,8 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* ─── Base reset — INSIDE @layer so Tailwind utilities win ─────────── */
 @layer base {
-  *, *::before, *::after {
-    box-sizing: border-box;
-  }
+  *, *::before, *::after { box-sizing: border-box; }
 
   html {
     scroll-behavior: smooth;
@@ -22,103 +18,123 @@
 
   body {
     height: 100%;
-    background-color: #080d08;
-    color: #e8f5e9;
+    background-color: #F0EDE6;
+    color: #1A2E1A;
     font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+    font-size: 16px;
     line-height: 1.5;
     overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* Garantir que input/select/textarea sempre herdem cor escura */
+  input, select, textarea, button {
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="search"],
+  textarea {
+    color: #1A2E1A;
+    background-color: #ffffff;
+  }
+
+  /* Placeholder visível — cinza médio escuro */
+  input::placeholder,
+  textarea::placeholder {
+    color: #9EB09E !important;
+    opacity: 1;
+  }
+
+  /* Autofill — fundo branco, texto escuro */
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
-  input:-webkit-autofill:focus {
-    -webkit-text-fill-color: #e8f5e9;
-    -webkit-box-shadow: 0 0 0 1000px #0f1a0f inset;
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-text-fill-color: #1A2E1A !important;
+    -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
     transition: background-color 9999s ease-in-out 0s;
+    caret-color: #1A2E1A;
   }
 
+  /* Seleção de texto */
   ::selection {
-    background: rgba(22, 163, 74, 0.25);
-    color: #4ade80;
+    background: rgba(58, 100, 50, 0.18);
+    color: #1A2E1A;
   }
 
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  /* Scrollbar discreta */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #1c3a1c; border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: #16a34a66; }
+  ::-webkit-scrollbar-thumb { background: #C5D9C0; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: #8FAA8F; }
 }
 
-/* ─── Animations ────────────────────────────────────────────────────── */
+/* ── Animações ── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-
 @keyframes slideInLeft {
   from { transform: translateX(-100%); }
   to   { transform: translateX(0); }
 }
-
 @keyframes shimmer {
   0%   { background-position: -200% center; }
   100% { background-position:  200% center; }
 }
 
-/* ─── Utility classes ───────────────────────────────────────────────── */
 .animate-fade-up  { animation: fadeUp  0.25s ease-out; }
 .animate-fade-in  { animation: fadeIn  0.2s  ease-out; }
 .animate-slide-in { animation: slideInLeft 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
 
 .skeleton {
-  background: linear-gradient(90deg, #0f1a0f 25%, #162616 50%, #0f1a0f 75%);
+  background: linear-gradient(90deg, #EEF5EB 25%, #F5F2EC 50%, #EEF5EB 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
 
-/* ─── Surface tokens ────────────────────────────────────────────────── */
+/* ── Tokens ── */
 :root {
-  --surface-0:  #080d08;
-  --surface-1:  #0c150c;
-  --surface-2:  #0f1a0f;
-  --surface-3:  #132013;
-  --surface-4:  #172617;
-  --border:     #1e341e;
-  --border-dim: #162416;
-  --green-glow: rgba(22,163,74,0.15);
+  --surface-0:  #F0EDE6;
+  --surface-1:  #FFFFFF;
+  --surface-2:  #F5F2EC;
+  --surface-3:  #EEF5EB;
+  --border:     #E2DECE;
+  --text-primary:   #1A2E1A;
+  --text-secondary: #4A6A4A;
+  --text-muted:     #7A9A7A;
+  --accent:         #3A6432;
+  --accent-hover:   #2E5028;
 }
 
-.surface-1 { background: var(--surface-1); }
-.surface-2 { background: var(--surface-2); }
-.border-base { border-color: var(--border); }
+/* ── Tipo de transação ── */
+.text-income   { color: #1F6B2A; }
+.text-expense  { color: #B91C1C; }
+.text-transfer { color: #1D4ED8; }
 
-/* ─── Income / Expense color helpers ───────────────────────────────── */
-.text-income   { color: #4ade80; }
-.text-expense  { color: #f87171; }
-.text-transfer { color: #60a5fa; }
+.bg-income   { background: #EEF5EB; border: 1px solid #BBD9BB; }
+.bg-expense  { background: #FEF2F2; border: 1px solid #FECACA; }
+.bg-transfer { background: #EFF6FF; border: 1px solid #BFDBFE; }
 
-.bg-income   { background: rgba(74, 222, 128, .12); }
-.bg-expense  { background: rgba(248, 113, 113, .12); }
-.bg-transfer { background: rgba(96, 165, 250, .12); }
-
-.chip-income   { background: rgba(74,222,128,.12); color: #4ade80; border: 1px solid rgba(74,222,128,.2); }
-.chip-expense  { background: rgba(248,113,113,.12); color: #f87171; border: 1px solid rgba(248,113,113,.2); }
-.chip-transfer { background: rgba(96,165,250,.12); color: #60a5fa; border: 1px solid rgba(96,165,250,.2); }
-
-/* ─── Safe area inset (iPhone notch / home bar) ─────────────────────── */
+/* ── Safe area (iPhone) ── */
 .safe-area-bottom {
   padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
 }
 
-/* ─── Pulse glow animation for logo / branding ──────────────────────── */
 @keyframes pulseGreen {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.3); }
-  50%       { box-shadow: 0 0 0 8px rgba(22, 163, 74, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(58,100,50,0.2); }
+  50%       { box-shadow: 0 0 0 8px rgba(58,100,50,0); }
 }
 .pulse-green { animation: pulseGreen 2.5s ease-in-out infinite; }

@@ -11,18 +11,18 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, label, error, hint, icon, suffix, id, ...props }, ref) => {
-    const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-')
+    const inputId = id ?? label?.toLowerCase().replace(/\s+/g, '-').replace(/[()]/g, '')
 
     return (
-      <div className="flex flex-col gap-1.5 w-full">
+      <div className="flex flex-col gap-2 w-full">
         {label && (
-          <label htmlFor={inputId} className="text-[13px] font-medium text-green-400/70 leading-none">
+          <label htmlFor={inputId} className="text-sm font-semibold text-[#3A6432] leading-none">
             {label}
           </label>
         )}
         <div className="relative flex items-center">
           {icon && (
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-green-700 pointer-events-none flex items-center">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A9A7A] pointer-events-none flex items-center">
               {icon}
             </span>
           )}
@@ -30,27 +30,27 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             className={cn(
-              'w-full h-11 rounded-xl text-sm transition-all duration-150',
-              'bg-[#0c150c] text-green-100 placeholder:text-green-900/60',
-              'border border-[#1e341e]',
-              'focus:outline-none focus:border-green-700/60 focus:bg-[#0f1a0f]',
-              'focus:ring-1 focus:ring-green-700/20',
-              'disabled:opacity-40 disabled:cursor-not-allowed',
-              icon ? 'pl-10 pr-4' : 'px-4',
-              suffix ? 'pr-10' : '',
-              error && 'border-red-800/60 focus:border-red-700/60 focus:ring-red-700/20',
+              'w-full h-12 rounded-xl text-base font-medium transition-all duration-150',
+              // Cores explícitas — não herdar do body para evitar bugs
+              'bg-white text-[#1A2E1A] placeholder:text-[#9EB09E] placeholder:font-normal',
+              'border border-[#D5CCBE]',
+              'focus:outline-none focus:border-[#3A6432] focus:ring-2 focus:ring-[#3A6432]/15 focus:bg-white',
+              'disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-[#F5F2EC]',
+              icon ? 'pl-11 pr-4' : 'px-4',
+              suffix ? 'pr-11' : '',
+              error && 'border-red-400 focus:border-red-500 focus:ring-red-400/15',
               className,
             )}
             {...props}
           />
           {suffix && (
-            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-green-700 pointer-events-none flex items-center">
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#7A9A7A] pointer-events-none flex items-center">
               {suffix}
             </span>
           )}
         </div>
-        {error && <p className="text-[12px] text-red-400 leading-none mt-0.5">{error}</p>}
-        {hint && !error && <p className="text-[12px] text-green-800 leading-none mt-0.5">{hint}</p>}
+        {error && <p className="text-sm text-red-500 leading-tight mt-0.5">{error}</p>}
+        {hint && !error && <p className="text-sm text-[#7A9A7A] leading-tight mt-0.5">{hint}</p>}
       </div>
     )
   }

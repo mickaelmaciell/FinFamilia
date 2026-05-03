@@ -2,17 +2,16 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, MONTHS } from '@/lib/utils'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts'
 import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet } from 'lucide-react'
 
 interface MonthData { month: string; receitas: number; despesas: number; saldo: number }
 interface CatData { name: string; value: number; color: string }
 
-const CHART_TOOLTIP_STYLE = {
-  contentStyle: { background: '#0f1a0f', border: '1px solid #1a2e1a', borderRadius: '12px', fontSize: '12px' },
-  labelStyle: { color: '#86efac' },
-  itemStyle: { color: '#86efac' },
+const CHART_TOOLTIP = {
+  contentStyle: { background: '#FFFFFF', border: '1px solid #E2DECE', borderRadius: '12px', fontSize: '13px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
+  labelStyle: { color: '#1A2E1A', fontWeight: 600 },
+  itemStyle: { color: '#5A7A5A' },
   formatter: (v: unknown) => formatCurrency(Number(v)),
 }
 
@@ -23,7 +22,6 @@ export default function ReportsPage() {
   const [monthData, setMonthData] = useState<MonthData[]>([])
   const [expenseCats, setExpenseCats] = useState<CatData[]>([])
   const [incomeCats, setIncomeCats] = useState<CatData[]>([])
-  const [householdId, setHouseholdId] = useState('')
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState({ income: 0, expense: 0, balance: 0 })
   const [memberView, setMemberView] = useState<'all' | string>('all')
@@ -36,20 +34,17 @@ export default function ReportsPage() {
     const { data: member } = await supabase.from('household_members').select('household_id').eq('user_id', user.id).single()
     if (!member) { setLoading(false); return }
     const hid = member.household_id
-    setHouseholdId(hid)
 
-    // Get members
     const { data: hm } = await supabase.from('household_members').select('user_id, profiles:profiles(full_name)').eq('household_id', hid)
     setMembers((hm || []).map((m: { user_id: string; profiles: { full_name: string } | null }) => ({ id: m.user_id, name: m.profiles?.full_name || 'Membro' })))
 
-    // Last 6 months data
     const months: MonthData[] = []
     for (let i = 5; i >= 0; i--) {
       const d = new Date(year, month - 1 - i, 1)
       const m2 = d.getMonth() + 1
       const y2 = d.getFullYear()
-      const start = `${y2}-${String(m2).padStart(2,'0')}-01`
-      const end = `${y2}-${String(m2).padStart(2,'0')}-${new Date(y2, m2, 0).getDate()}`
+      const start = `${y2}-${String(m2).padStart(2, '0')}-01`
+      const end = `${y2}-${String(m2).padStart(2, '0')}-${new Date(y2, m2, 0).getDate()}`
       let q = supabase.from('fin_transactions').select('type, amount').eq('household_id', hid).gte('date', start).lte('date', end)
       if (memberView !== 'all') q = q.eq('user_id', memberView)
       const { data: txsRaw } = await q
@@ -60,9 +55,8 @@ export default function ReportsPage() {
     }
     setMonthData(months)
 
-    // Current month by category
-    const start = `${year}-${String(month).padStart(2,'0')}-01`
-    const end = `${year}-${String(month).padStart(2,'0')}-${new Date(year, month, 0).getDate()}`
+    const start = `${year}-${String(month).padStart(2, '0')}-01`
+    const end = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
     let q2 = supabase.from('fin_transactions').select('type, amount, category:fin_categories(name, color)').eq('household_id', hid).gte('date', start).lte('date', end)
     if (memberView !== 'all') q2 = q2.eq('user_id', memberView)
     const { data: txsCurrentRaw } = await q2
@@ -93,124 +87,163 @@ export default function ReportsPage() {
 
   useEffect(() => { load() }, [load])
 
+  if (loading) return (
+    <div className="px-4 py-5 max-w-3xl mx-auto lg:px-6 space-y-4">
+      {[1, 2, 3].map(n => (
+        <div key={n} className="rounded-2xl bg-white border border-[#E2DECE] p-5 h-32 animate-pulse shadow-sm" />
+      ))}
+    </div>
+  )
+
   return (
-    <div className="px-4 py-4 max-w-3xl mx-auto lg:px-6 lg:py-6 space-y-4">
-      {/* Controls */}
-      <div className="flex items-center justify-between gap-3">
+    <div className="px-4 py-5 max-w-3xl mx-auto lg:px-6 lg:py-6 space-y-4">
+
+      {/* ── Controles de mês ── */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <button onClick={() => { if (month === 1) { setMonth(12); setYear(y => y - 1) } else setMonth(m => m - 1) }}
-            className="p-2 rounded-xl hover:bg-[#1a2e1a] text-green-600 hover:text-green-400 transition-colors active:scale-95">
-            <ChevronLeft size={18} />
+          <button
+            onClick={() => { if (month === 1) { setMonth(12); setYear(y => y - 1) } else setMonth(m => m - 1) }}
+            className="p-2.5 rounded-xl hover:bg-[#EEF5EB] text-[#5A7A5A] hover:text-[#3A6432] transition-colors active:scale-95"
+          >
+            <ChevronLeft size={20} />
           </button>
-          <span className="text-sm font-medium text-green-200 min-w-[110px] text-center">{MONTHS[month - 1]} {year}</span>
-          <button onClick={() => { if (month === 12) { setMonth(1); setYear(y => y + 1) } else setMonth(m => m + 1) }}
-            className="p-2 rounded-xl hover:bg-[#1a2e1a] text-green-600 hover:text-green-400 transition-colors active:scale-95">
-            <ChevronRight size={18} />
+          <span className="text-base font-bold text-[#1A2E1A] min-w-[130px] text-center">
+            {MONTHS[month - 1]} {year}
+          </span>
+          <button
+            onClick={() => { if (month === 12) { setMonth(1); setYear(y => y + 1) } else setMonth(m => m + 1) }}
+            className="p-2.5 rounded-xl hover:bg-[#EEF5EB] text-[#5A7A5A] hover:text-[#3A6432] transition-colors active:scale-95"
+          >
+            <ChevronRight size={20} />
           </button>
         </div>
         {members.length > 1 && (
-          <select value={memberView} onChange={e => setMemberView(e.target.value)}
-            className="h-9 bg-[#0f1a0f] border border-[#1a2e1a] rounded-xl text-green-100 px-3 text-xs focus:outline-none">
-            <option value="all">Todos</option>
+          <select
+            value={memberView}
+            onChange={e => setMemberView(e.target.value)}
+            className="h-10 bg-white border border-[#D5CCBE] rounded-xl text-sm text-[#1A2E1A] px-3 focus:outline-none focus:border-[#3A6432]"
+          >
+            <option value="all">Toda a família</option>
             {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         )}
       </div>
 
-      {/* Summary */}
+      {/* ── Resumo do mês ── */}
       <div className="grid grid-cols-3 gap-3">
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-green-700 flex items-center gap-1 mb-1"><TrendingUp size={11} /> Receitas</p>
-          <p className="text-base font-bold text-green-400">{formatCurrency(summary.income)}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-green-700 flex items-center gap-1 mb-1"><TrendingDown size={11} /> Despesas</p>
-          <p className="text-base font-bold text-red-400">{formatCurrency(summary.expense)}</p>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <p className="text-xs text-green-700 flex items-center gap-1 mb-1"><Wallet size={11} /> Saldo</p>
-          <p className={`text-base font-bold ${summary.balance >= 0 ? 'text-green-300' : 'text-red-400'}`}>{formatCurrency(summary.balance)}</p>
-        </CardContent></Card>
+        <div className="bg-white border border-[#E2DECE] rounded-2xl p-4 shadow-sm">
+          <p className="text-sm font-medium text-[#5A7A5A] flex items-center gap-1 mb-2">
+            <TrendingUp size={14} className="text-[#3A6432]" /> Receitas
+          </p>
+          <p className="text-base font-bold text-[#3A6432]">{formatCurrency(summary.income)}</p>
+        </div>
+        <div className="bg-white border border-[#E2DECE] rounded-2xl p-4 shadow-sm">
+          <p className="text-sm font-medium text-[#5A7A5A] flex items-center gap-1 mb-2">
+            <TrendingDown size={14} className="text-red-500" /> Despesas
+          </p>
+          <p className="text-base font-bold text-red-500">{formatCurrency(summary.expense)}</p>
+        </div>
+        <div className="bg-white border border-[#E2DECE] rounded-2xl p-4 shadow-sm">
+          <p className="text-sm font-medium text-[#5A7A5A] flex items-center gap-1 mb-2">
+            <Wallet size={14} className="text-[#5A7A5A]" /> Resultado
+          </p>
+          <p className={`text-base font-bold ${summary.balance >= 0 ? 'text-[#3A6432]' : 'text-red-500'}`}>
+            {formatCurrency(summary.balance)}
+          </p>
+        </div>
       </div>
 
-      {/* Monthly overview chart */}
-      <Card>
-        <CardHeader><h3 className="text-sm font-semibold text-green-200">Evolução mensal</h3></CardHeader>
-        <CardContent className="px-2 pb-4 pt-2">
+      {/* ── Gráfico: Evolução mensal ── */}
+      <div className="bg-white border border-[#E2DECE] rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#F0EDE6]">
+          <h3 className="text-base font-bold text-[#1A2E1A]">Evolução mensal</h3>
+          <div className="flex items-center gap-4 mt-1">
+            <span className="flex items-center gap-1.5 text-sm text-[#5A7A5A]">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#3A6432] inline-block" /> Receitas
+            </span>
+            <span className="flex items-center gap-1.5 text-sm text-[#5A7A5A]">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> Despesas
+            </span>
+          </div>
+        </div>
+        <div className="px-2 pb-4 pt-3">
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={monthData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#4a7a4a' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: '#4a7a4a' }} axisLine={false} tickLine={false} tickFormatter={v => `${v >= 1000 ? (v/1000).toFixed(0)+'k' : v}`} />
-              <Tooltip {...CHART_TOOLTIP_STYLE} />
-              <Bar dataKey="receitas" fill="#22c55e" radius={[4,4,0,0]} maxBarSize={32} />
-              <Bar dataKey="despesas" fill="#ef4444" radius={[4,4,0,0]} maxBarSize={32} />
+            <BarChart data={monthData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <XAxis dataKey="month" tick={{ fontSize: 13, fill: '#5A7A5A' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 12, fill: '#8FAA8F' }} axisLine={false} tickLine={false} tickFormatter={v => `${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`} />
+              <Tooltip {...CHART_TOOLTIP} />
+              <Bar dataKey="receitas" fill="#3A6432" radius={[6, 6, 0, 0]} maxBarSize={36} />
+              <Bar dataKey="despesas" fill="#EF4444" radius={[6, 6, 0, 0]} maxBarSize={36} />
             </BarChart>
           </ResponsiveContainer>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* Saldo line */}
-      <Card>
-        <CardHeader><h3 className="text-sm font-semibold text-green-200">Resultado por mês</h3></CardHeader>
-        <CardContent className="px-2 pb-4 pt-2">
-          <ResponsiveContainer width="100%" height={140}>
-            <LineChart data={monthData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#4a7a4a' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: '#4a7a4a' }} axisLine={false} tickLine={false} />
-              <Tooltip {...CHART_TOOLTIP_STYLE} />
-              <Line type="monotone" dataKey="saldo" stroke="#4ade80" strokeWidth={2} dot={{ fill: '#4ade80', strokeWidth: 0, r: 3 }} />
+      {/* ── Gráfico: Resultado por mês ── */}
+      <div className="bg-white border border-[#E2DECE] rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#F0EDE6]">
+          <h3 className="text-base font-bold text-[#1A2E1A]">Resultado por mês</h3>
+          <p className="text-sm text-[#8FAA8F] mt-0.5">Sobra ou déficit mensal</p>
+        </div>
+        <div className="px-2 pb-4 pt-3">
+          <ResponsiveContainer width="100%" height={150}>
+            <LineChart data={monthData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <XAxis dataKey="month" tick={{ fontSize: 13, fill: '#5A7A5A' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 12, fill: '#8FAA8F' }} axisLine={false} tickLine={false} />
+              <Tooltip {...CHART_TOOLTIP} />
+              <Line type="monotone" dataKey="saldo" stroke="#3A6432" strokeWidth={2.5} dot={{ fill: '#3A6432', strokeWidth: 0, r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* Pie charts */}
+      {/* ── Categorias ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {expenseCats.length > 0 && (
-          <Card>
-            <CardHeader><h3 className="text-sm font-semibold text-green-200">Despesas por categoria</h3></CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
-                <PieChart width={100} height={100}>
-                  <Pie data={expenseCats} cx={45} cy={45} innerRadius={28} outerRadius={45} dataKey="value" paddingAngle={2}>
-                    {expenseCats.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                  </Pie>
-                </PieChart>
-                <ul className="flex-1 flex flex-col gap-1.5 max-h-32 overflow-y-auto">
-                  {expenseCats.map((c, i) => (
-                    <li key={i} className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.color }} />
-                      <span className="text-xs text-green-400 flex-1 truncate">{c.name}</span>
-                      <span className="text-xs text-green-300 tabular-nums">{formatCurrency(c.value)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="bg-white border border-[#E2DECE] rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#F0EDE6]">
+              <h3 className="text-base font-bold text-[#1A2E1A]">Despesas por categoria</h3>
+            </div>
+            <div className="p-5 flex items-center gap-5">
+              <PieChart width={96} height={96}>
+                <Pie data={expenseCats} cx={44} cy={44} innerRadius={28} outerRadius={44} dataKey="value" paddingAngle={2}>
+                  {expenseCats.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                </Pie>
+              </PieChart>
+              <ul className="flex-1 flex flex-col gap-2.5 max-h-36 overflow-y-auto">
+                {expenseCats.map((c, i) => (
+                  <li key={i} className="flex items-center gap-2.5">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
+                    <span className="text-sm text-[#5A7A5A] flex-1 truncate">{c.name}</span>
+                    <span className="text-sm font-bold text-[#1A2E1A] tabular-nums">{formatCurrency(c.value)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         )}
         {incomeCats.length > 0 && (
-          <Card>
-            <CardHeader><h3 className="text-sm font-semibold text-green-200">Receitas por categoria</h3></CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4">
-                <PieChart width={100} height={100}>
-                  <Pie data={incomeCats} cx={45} cy={45} innerRadius={28} outerRadius={45} dataKey="value" paddingAngle={2}>
-                    {incomeCats.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                  </Pie>
-                </PieChart>
-                <ul className="flex-1 flex flex-col gap-1.5 max-h-32 overflow-y-auto">
-                  {incomeCats.map((c, i) => (
-                    <li key={i} className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: c.color }} />
-                      <span className="text-xs text-green-400 flex-1 truncate">{c.name}</span>
-                      <span className="text-xs text-green-300 tabular-nums">{formatCurrency(c.value)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="bg-white border border-[#E2DECE] rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#F0EDE6]">
+              <h3 className="text-base font-bold text-[#1A2E1A]">Receitas por categoria</h3>
+            </div>
+            <div className="p-5 flex items-center gap-5">
+              <PieChart width={96} height={96}>
+                <Pie data={incomeCats} cx={44} cy={44} innerRadius={28} outerRadius={44} dataKey="value" paddingAngle={2}>
+                  {incomeCats.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                </Pie>
+              </PieChart>
+              <ul className="flex-1 flex flex-col gap-2.5 max-h-36 overflow-y-auto">
+                {incomeCats.map((c, i) => (
+                  <li key={i} className="flex items-center gap-2.5">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.color }} />
+                    <span className="text-sm text-[#5A7A5A] flex-1 truncate">{c.name}</span>
+                    <span className="text-sm font-bold text-[#1A2E1A] tabular-nums">{formatCurrency(c.value)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         )}
       </div>
     </div>

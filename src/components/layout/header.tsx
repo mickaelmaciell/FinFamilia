@@ -39,21 +39,14 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
       .gt('expires_at', new Date().toISOString())
 
     if (error) {
-      console.error('Error fetching invites:', JSON.stringify(error, null, 2))
       setNotifError(error.message || JSON.stringify(error))
       return
     }
-
     setNotifError(null)
-
-    if (!invitesData || invitesData.length === 0) {
-      setInvites([])
-      return
-    }
+    if (!invitesData || invitesData.length === 0) { setInvites([]); return }
 
     const householdIds = [...new Set(invitesData.map(i => i.household_id))]
     const inviterIds = [...new Set(invitesData.map(i => i.invited_by))]
-
     const [{ data: households }, { data: profiles }] = await Promise.all([
       supabase.from('households').select('id, name').in('id', householdIds),
       supabase.from('profiles').select('id, full_name').in('id', inviterIds)
@@ -62,26 +55,16 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
     setInvites(invitesData.map(inv => {
       const hh = households?.find(h => h.id === inv.household_id)
       const prof = profiles?.find(p => p.id === inv.invited_by)
-      return {
-        id: inv.id,
-        token: inv.token,
-        household_name: hh?.name || 'Lar',
-        inviter_name: prof?.full_name || 'Alguém',
-      }
+      return { id: inv.id, token: inv.token, household_name: hh?.name || 'Lar', inviter_name: prof?.full_name || 'Alguém' }
     }))
   }, [])
 
   useEffect(() => {
     loadInvites()
-
     const supabase = createClient()
-    const channel = supabase
-      .channel('realtime_invitations')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'household_invitations' }, () => {
-        loadInvites()
-      })
+    const channel = supabase.channel('realtime_invitations')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'household_invitations' }, () => loadInvites())
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
   }, [loadInvites])
 
@@ -92,10 +75,8 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
     const { data: result } = await (supabase.rpc as any)('accept_invitation', { p_token: token })
     setAccepting(null)
     if (result === 'success' || result === 'already_member') {
-      await loadInvites()
-      setShowNotifs(false)
-      router.push('/dashboard')
-      router.refresh()
+      await loadInvites(); setShowNotifs(false)
+      router.push('/dashboard'); router.refresh()
     }
   }
 
@@ -115,15 +96,16 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
   const unread = invites.length
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between px-4 h-14 bg-[#0e1a0e]/95 border-b border-[#1f3320] backdrop-blur-xl">
+    // Header: branco/creme — como a parede branca do quarto
+    <header className="sticky top-0 z-20 flex items-center justify-between px-5 h-16 bg-white/90 border-b border-[#E2DECE] backdrop-blur-md shadow-sm">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-xl hover:bg-[#1a2e1a] text-[#4a7a4a] hover:text-[#7ab87a] transition-colors active:scale-95"
+          className="lg:hidden p-2.5 rounded-xl hover:bg-[#EEF5EB] text-[#5A7A5A] hover:text-[#3A6432] transition-colors active:scale-95"
         >
-          <Menu size={20} />
+          <Menu size={22} />
         </button>
-        <h1 className="text-base font-semibold text-[#c8e6c8]">{title}</h1>
+        <h1 className="text-lg font-bold text-[#1A2E1A]">{title}</h1>
       </div>
 
       <div className="flex items-center gap-2">
@@ -131,11 +113,11 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
         <div className="relative">
           <button
             onClick={() => { setShowNotifs(v => !v); setShowMenu(false) }}
-            className="relative p-2 rounded-xl hover:bg-[#1a2e1a] text-[#4a7a4a] hover:text-[#7ab87a] transition-colors"
+            className="relative p-2.5 rounded-xl hover:bg-[#EEF5EB] text-[#5A7A5A] hover:text-[#3A6432] transition-colors"
           >
-            <Bell size={18} />
+            <Bell size={20} />
             {unread > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full text-[9px] font-bold text-[#0e1a0e] flex items-center justify-center">
+              <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-[#3A6432] rounded-full text-[9px] font-bold text-white flex items-center justify-center">
                 {unread}
               </span>
             )}
@@ -144,49 +126,46 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
           {showNotifs && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowNotifs(false)} />
-              <div className="absolute right-0 top-full mt-2 w-80 bg-[#132213] border border-[#1f3a1f] rounded-xl shadow-2xl z-20 overflow-hidden">
-                <div className="px-4 py-3 border-b border-[#1f3a1f]">
-                  <p className="text-sm font-semibold text-[#a0c8a0]">Notificações</p>
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-[#E2DECE] rounded-2xl shadow-xl z-20 overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#E2DECE]">
+                  <p className="text-sm font-semibold text-[#1A2E1A]">Notificações</p>
                 </div>
-
                 {notifError ? (
                   <div className="px-4 py-6 text-center">
-                    <X size={24} className="text-red-400 mx-auto mb-2" />
-                    <p className="text-sm text-red-400">Erro: {notifError}</p>
-                    <p className="text-xs text-red-600 mt-1">Falha de permissão no banco.</p>
+                    <p className="text-sm text-red-500">Erro: {notifError}</p>
                   </div>
                 ) : invites.length === 0 ? (
-                  <div className="px-4 py-6 text-center">
-                    <Bell size={24} className="text-[#2d4a2d] mx-auto mb-2" />
-                    <p className="text-sm text-[#4a7a4a]">Nenhuma notificação</p>
+                  <div className="px-4 py-8 text-center">
+                    <Bell size={24} className="text-[#C5D9C0] mx-auto mb-2" />
+                    <p className="text-sm text-[#8FAA8F]">Nenhuma notificação</p>
                   </div>
                 ) : (
                   <ul>
                     {invites.map(inv => (
-                      <li key={inv.id} className="px-4 py-3 border-b border-[#1f3a1f] last:border-0">
+                      <li key={inv.id} className="px-4 py-3 border-b border-[#F0EDE6] last:border-0">
                         <div className="flex items-start gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-green-900/20 border border-green-800/20 flex items-center justify-center shrink-0 mt-0.5">
-                            <Users size={14} className="text-green-500" />
+                          <div className="w-9 h-9 rounded-xl bg-[#EEF5EB] border border-[#C5D9C0] flex items-center justify-center shrink-0 mt-0.5">
+                            <Users size={15} className="text-[#3A6432]" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-[#c8e6c8] leading-snug">
-                              <span className="font-medium text-green-400">{inv.inviter_name}</span> te convidou para{' '}
-                              <span className="font-medium text-[#c8e6c8]">{inv.household_name}</span>
+                            <p className="text-sm text-[#1A2E1A] leading-snug">
+                              <span className="font-semibold text-[#3A6432]">{inv.inviter_name}</span> te convidou para{' '}
+                              <span className="font-semibold">{inv.household_name}</span>
                             </p>
                             <div className="flex gap-2 mt-2">
                               <button
                                 onClick={() => acceptInvite(inv.token)}
                                 disabled={accepting === inv.token}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-700/30 border border-green-700/40 text-xs font-medium text-green-300 hover:bg-green-700/50 transition-colors disabled:opacity-50"
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#3A6432] text-xs font-semibold text-white hover:bg-[#2E5028] transition-colors disabled:opacity-50"
                               >
-                                <Check size={11} />
+                                <Check size={12} />
                                 {accepting === inv.token ? 'Aceitando...' : 'Aceitar'}
                               </button>
                               <button
                                 onClick={() => declineInvite(inv.id)}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-transparent border border-[#2d4a2d] text-xs text-[#5a8a5a] hover:bg-[#1a2e1a] transition-colors"
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#E2DECE] text-xs text-[#5A7A5A] hover:bg-[#F5F2EC] transition-colors"
                               >
-                                <X size={11} /> Recusar
+                                <X size={12} /> Recusar
                               </button>
                             </div>
                           </div>
@@ -204,12 +183,12 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
         <div className="relative">
           <button
             onClick={() => { setShowMenu(v => !v); setShowNotifs(false) }}
-            className="flex items-center gap-2 p-1 rounded-xl hover:bg-[#1a2e1a] transition-colors"
+            className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-[#EEF5EB] transition-colors"
           >
             {avatarUrl ? (
               <img src={avatarUrl} alt={userName} className="w-8 h-8 rounded-lg object-cover" />
             ) : (
-              <div className="w-8 h-8 rounded-lg bg-green-900/40 border border-green-800/30 flex items-center justify-center text-xs font-bold text-green-400">
+              <div className="w-9 h-9 rounded-xl bg-[#EEF5EB] border border-[#C5D9C0] flex items-center justify-center text-sm font-bold text-[#3A6432]">
                 {initials}
               </div>
             )}
@@ -218,19 +197,20 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
           {showMenu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-              <div className="absolute right-0 top-full mt-2 w-48 bg-[#132213] border border-[#1f3a1f] rounded-xl shadow-2xl z-20 overflow-hidden">
-                <div className="px-4 py-3 border-b border-[#1f3a1f]">
-                  <p className="text-sm font-medium text-[#a0c8a0] truncate">{userName}</p>
+              <div className="absolute right-0 top-full mt-2 w-52 bg-white border border-[#E2DECE] rounded-2xl shadow-xl z-20 overflow-hidden">
+                <div className="px-4 py-3 border-b border-[#F0EDE6]">
+                  <p className="text-sm font-semibold text-[#1A2E1A] truncate">{userName}</p>
+                  <p className="text-xs text-[#8FAA8F] mt-0.5">Minha conta</p>
                 </div>
                 <button
                   onClick={() => { setShowMenu(false); router.push('/settings') }}
-                  className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-[#7ab87a] hover:bg-[#1a2e1a] transition-colors"
+                  className="flex items-center gap-2.5 w-full px-4 py-3 text-sm font-medium text-[#3A6432] hover:bg-[#EEF5EB] transition-colors"
                 >
-                  <User size={15} /> Perfil
+                  <User size={15} /> Perfil e Configurações
                 </button>
                 <button
                   onClick={signOut}
-                  className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-red-400 hover:bg-red-900/20 transition-colors"
+                  className="flex items-center gap-2.5 w-full px-4 py-3 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors"
                 >
                   <LogOut size={15} /> Sair
                 </button>
