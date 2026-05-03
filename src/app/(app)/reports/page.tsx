@@ -8,11 +8,54 @@ import { ChevronLeft, ChevronRight, TrendingUp, TrendingDown, Wallet } from 'luc
 interface MonthData { month: string; receitas: number; despesas: number; saldo: number }
 interface CatData { name: string; value: number; color: string }
 
+interface Installment {
+  id: string; user_id: string; name: string; type: string
+  installment_amount: number; total_installments: number | null
+  paid_installments: number; start_date: string; due_day: number
+  split_type: 'personal' | 'members'; split_count: number
+  until_date?: string | null; household_id?: string | null; status: string
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  consortium: '#8B5CF6',
+  financing: '#F59E0B',
+  installment: '#3B82F6',
+  subscription: '#10B981',
+  other: '#6B7280',
+}
+const TYPE_LABELS: Record<string, string> = {
+  consortium: 'Consórcio',
+  financing: 'Financiamento',
+  installment: 'Parcelamento',
+  subscription: 'Assinatura',
+  other: 'Outros',
+}
+
 const CHART_TOOLTIP = {
   contentStyle: { background: '#FFFFFF', border: '1px solid #E2DECE', borderRadius: '12px', fontSize: '13px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
   labelStyle: { color: '#1A2E1A', fontWeight: 600 },
   itemStyle: { color: '#5A7A5A' },
   formatter: (v: unknown) => formatCurrency(Number(v)),
+}
+
+/** Calcula a parcela de um bill para um dado mês (1-based) / ano */
+function getInstallmentForMonth(bill: Installment, y2: number, m2: number): number | null {
+  const start = new Date(bill.start_date + 'T12:00:00')
+  const monthsDiff = (y2 - start.getFullYear()) * 12 + (m2 - 1 - start.getMonth())
+  if (monthsDiff < 0) return null
+  const instNum = monthsDiff + 1
+  const total = bill.total_installments ?? Infinity
+  if (instNum > total) return null
+  if (bill.until_date) {
+    const until = new Date(bill.until_date + 'T12:00:00')
+    const dueDate = new Date(y2, m2 - 1, bill.due_day)
+    if (dueDate > until) return null
+  }
+  const isPaid = instNum <= bill.paid_installments
+  if (!isPaid) return null
+  return bill.split_type === 'members'
+    ? bill.installment_amount / (bill.split_count || 1)
+    : bill.installment_amount
 }
 
 export default function ReportsPage() {
@@ -28,16 +71,37 @@ export default function ReportsPage() {
   const [members, setMembers] = useState<{ id: string; name: string }[]>([])
 
   const load = useCallback(async () => {
+    setLoading(true)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    const { data: member } = await supabase.from('household_members').select('household_id').eq('user_id', user.id).single()
-    if (!member) { setLoading(false); return }
-    const hid = member.household_id
 
-    const { data: hm } = await supabase.from('household_members').select('user_id, profiles:profiles(full_name)').eq('household_id', hid)
-    setMembers((hm || []).map((m: { user_id: string; profiles: { full_name: string } | null }) => ({ id: m.user_id, name: m.profiles?.full_name || 'Membro' })))
+    const { data: memberRow } = await supabase
+      .from('household_members').select('household_id').eq('user_id', user.id).single()
+    const hid = memberRow?.household_id ?? null
 
+    if (hid) {
+      const { data: hm } = await supabase
+        .from('household_members')
+        .select('user_id, profiles:profiles(full_name)')
+        .eq('household_id', hid)
+      setMembers((hm || []).map((m: { user_id: string; profiles: { full_name: string } | null }) => ({
+        id: m.user_id, name: m.profiles?.full_name || 'Membro'
+      })))
+    }
+
+    // Busca todas as parcelas ativas visíveis pelo usuário
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any
+    const { data: installmentsRaw } = await db
+      .from('fin_installments')
+      .select('*')
+      .eq('status', 'active')
+    const installments: Installment[] = (installmentsRaw || []).filter((b: Installment) =>
+      memberView === 'all' ? true : b.user_id === memberView
+    )
+
+    // ── Gráfico: últimos 6 meses ──────────────────────────────────────
     const months: MonthData[] = []
     for (let i = 5; i >= 0; i--) {
       const d = new Date(year, month - 1 - i, 1)
@@ -45,29 +109,61 @@ export default function ReportsPage() {
       const y2 = d.getFullYear()
       const start = `${y2}-${String(m2).padStart(2, '0')}-01`
       const end = `${y2}-${String(m2).padStart(2, '0')}-${new Date(y2, m2, 0).getDate()}`
-      let q = supabase.from('fin_transactions').select('type, amount').eq('household_id', hid).gte('date', start).lte('date', end)
+
+      // Transações manuais
+      let q = supabase.from('fin_transactions').select('type, amount')
+      if (hid) q = q.eq('household_id', hid)
+      else q = q.eq('user_id', user.id)
+      q = q.gte('date', start).lte('date', end)
       if (memberView !== 'all') q = q.eq('user_id', memberView)
       const { data: txsRaw } = await q
       const txs = (txsRaw || []) as { type: string; amount: number }[]
       const income = txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
-      const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
-      months.push({ month: MONTHS[m2 - 1].slice(0, 3), receitas: income, despesas: expense, saldo: income - expense })
+      const txExpense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+
+      // Parcelas pagas neste mês
+      const instExpense = installments.reduce((sum, bill) => {
+        const amt = getInstallmentForMonth(bill, y2, m2)
+        return sum + (amt ?? 0)
+      }, 0)
+
+      months.push({
+        month: MONTHS[m2 - 1].slice(0, 3),
+        receitas: income,
+        despesas: txExpense + instExpense,
+        saldo: income - (txExpense + instExpense),
+      })
     }
     setMonthData(months)
 
-    const start = `${year}-${String(month).padStart(2, '0')}-01`
-    const end = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
-    let q2 = supabase.from('fin_transactions').select('type, amount, category:fin_categories(name, color)').eq('household_id', hid).gte('date', start).lte('date', end)
+    // ── Resumo do mês atual ───────────────────────────────────────────
+    const startCur = `${year}-${String(month).padStart(2, '0')}-01`
+    const endCur = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
+    let q2 = supabase.from('fin_transactions').select('type, amount, category:fin_categories(name, color)')
+    if (hid) q2 = q2.eq('household_id', hid)
+    else q2 = q2.eq('user_id', user.id)
+    q2 = q2.gte('date', startCur).lte('date', endCur)
     if (memberView !== 'all') q2 = q2.eq('user_id', memberView)
     const { data: txsCurrentRaw } = await q2
     const txsCurrent = (txsCurrentRaw || []) as { type: string; amount: number; category: { name: string; color: string } | null }[]
 
     const income = txsCurrent.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
-    const expense = txsCurrent.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
-    setSummary({ income, expense, balance: income - expense })
+    const txExpenseCur = txsCurrent.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
 
+    // Parcelas pagas no mês atual
+    const instExpenseCur = installments.reduce((sum, bill) => {
+      const amt = getInstallmentForMonth(bill, year, month)
+      return sum + (amt ?? 0)
+    }, 0)
+
+    const totalExpense = txExpenseCur + instExpenseCur
+    setSummary({ income, expense: totalExpense, balance: income - totalExpense })
+
+    // ── Categorias de despesa ─────────────────────────────────────────
     const ecMap: Record<string, { name: string; value: number; color: string }> = {}
     const icMap: Record<string, { name: string; value: number; color: string }> = {}
+
+    // Transações manuais por categoria
     txsCurrent.forEach(t => {
       const cat = t.category
       const key = cat?.name || 'Outros'
@@ -80,6 +176,17 @@ export default function ReportsPage() {
         icMap[key].value += Number(t.amount)
       }
     })
+
+    // Parcelas pagas agrupadas por tipo
+    installments.forEach(bill => {
+      const amt = getInstallmentForMonth(bill, year, month)
+      if (!amt) return
+      const label = TYPE_LABELS[bill.type] || 'Parcelas'
+      const color = TYPE_COLORS[bill.type] || '#6B7280'
+      if (!ecMap[label]) ecMap[label] = { name: label, value: 0, color }
+      ecMap[label].value += amt
+    })
+
     setExpenseCats(Object.values(ecMap).sort((a, b) => b.value - a.value))
     setIncomeCats(Object.values(icMap).sort((a, b) => b.value - a.value))
     setLoading(false)
@@ -243,6 +350,12 @@ export default function ReportsPage() {
                 ))}
               </ul>
             </div>
+          </div>
+        )}
+        {expenseCats.length === 0 && incomeCats.length === 0 && (
+          <div className="col-span-full bg-white border border-[#E2DECE] rounded-2xl p-8 text-center shadow-sm">
+            <p className="text-sm text-[#8FAA8F]">Nenhuma movimentação registrada neste mês</p>
+            <p className="text-xs text-[#C5D9C0] mt-1">Parcelas de contas aparecerão aqui quando marcadas como pagas</p>
           </div>
         )}
       </div>
