@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, ArrowLeftRight, Wallet, Tag, Target,
-  PieChart, Users, Settings, TrendingUp, X, BarChart3, RefreshCw
+  PieChart, Users, Settings, TrendingUp, X, BarChart3, RefreshCw, CalendarClock
 } from 'lucide-react'
 
 // Sidebar tem a sensação da parede de acento verde floresta do quarto elegante
@@ -12,16 +12,17 @@ import {
 
 const groups = [
   {
-    label: 'Finanças',
+    label: 'Principal',
     items: [
       { href: '/dashboard', icon: LayoutDashboard, label: 'Início' },
-      { href: '/transactions', icon: ArrowLeftRight, label: 'Lançamentos' },
-      { href: '/accounts', icon: Wallet, label: 'Contas' },
+      { href: '/bills', icon: CalendarClock, label: 'Contas a Pagar' },
+      { href: '/accounts', icon: Wallet, label: 'Saldo em Contas' },
     ],
   },
   {
-    label: 'Planejamento',
+    label: 'Financeiro',
     items: [
+      { href: '/transactions', icon: ArrowLeftRight, label: 'Lançamentos' },
       { href: '/budgets', icon: BarChart3, label: 'Orçamentos' },
       { href: '/goals', icon: Target, label: 'Metas' },
       { href: '/recurring', icon: RefreshCw, label: 'Recorrentes' },
@@ -29,7 +30,7 @@ const groups = [
     ],
   },
   {
-    label: 'Análise e Família',
+    label: 'Família e Conta',
     items: [
       { href: '/reports', icon: PieChart, label: 'Relatórios' },
       { href: '/household', icon: Users, label: 'Minha Família' },

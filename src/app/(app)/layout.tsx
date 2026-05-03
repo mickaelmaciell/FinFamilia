@@ -8,15 +8,16 @@ import { ToastProvider } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 
 const PAGE_TITLES: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/transactions': 'Transações',
+  '/dashboard': 'Início',
+  '/bills': 'Contas a Pagar',
+  '/transactions': 'Lançamentos',
   '/accounts': 'Contas',
   '/categories': 'Categorias',
   '/budgets': 'Orçamentos',
   '/goals': 'Metas',
   '/recurring': 'Recorrentes',
   '/reports': 'Relatórios',
-  '/household': 'Família',
+  '/household': 'Minha Família',
   '/settings': 'Configurações',
 }
 
