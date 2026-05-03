@@ -14,33 +14,54 @@ import {
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
 interface Bill {
-  id: string; name: string; description?: string
-  installment_amount: number; total_installments?: number
-  until_date?: string; due_day: number; start_date: string
-  split_type: 'personal' | 'members'; split_count: number
-  is_active: boolean; household_id?: string; created_by: string
+  id: string
+  user_id: string
+  name: string
+  type: string
+  notes?: string | null
+  installment_amount: number
+  total_installments: number | null
+  paid_installments: number
+  until_date?: string | null
+  due_day: number
+  start_date: string
+  split_type: 'personal' | 'members'
+  split_count: number
+  household_id?: string | null
+  status: string
 }
-interface Payment { bill_id: string; installment_number: number; paid_at: string; amount_paid: number }
+
 interface InstallmentRow {
-  number: number; dueDate: Date; totalAmount: number; myShare: number; isPaid: boolean
+  number: number
+  dueDate: Date
+  totalAmount: number
+  myShare: number
+  isPaid: boolean
 }
 
 function billInstallments(bill: Bill): InstallmentRow[] {
   const start = new Date(bill.start_date + 'T12:00:00')
-  const myShare = bill.installment_amount / bill.split_count
+  const myShare = bill.split_type === 'members'
+    ? bill.installment_amount / (bill.split_count || 1)
+    : bill.installment_amount
+
   let count = 0
-  if (bill.total_installments) count = bill.total_installments
-  else if (bill.until_date) {
+  if (bill.total_installments) {
+    count = bill.total_installments
+  } else if (bill.until_date) {
     const until = new Date(bill.until_date + 'T12:00:00')
     let d = new Date(start)
-    while (d <= until) { count++; d = new Date(d.getFullYear(), d.getMonth() + 1, 1) }
-  } else count = 12
+    while (d <= until && count < 600) { count++; d = new Date(d.getFullYear(), d.getMonth() + 1, 1) }
+  } else {
+    count = 60 // padrão 5 anos se não informado
+  }
+
   return Array.from({ length: count }, (_, i) => ({
     number: i + 1,
     dueDate: new Date(start.getFullYear(), start.getMonth() + i, bill.due_day),
     totalAmount: bill.installment_amount,
     myShare,
-    isPaid: false,
+    isPaid: (i + 1) <= bill.paid_installments,
   }))
 }
 
@@ -55,11 +76,23 @@ function getDueStatus(dueDate: Date, isPaid: boolean) {
   return { color: 'text-[#5A7A5A]', bg: 'bg-[#F5F2EE]', border: 'border-[#E2DECE]', label: d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) }
 }
 
+const TYPE_LABELS: Record<string, string> = {
+  consortium: 'Consórcio',
+  installment: 'Parcelamento',
+  financing: 'Financiamento',
+  subscription: 'Assinatura',
+  other: 'Outro',
+}
+
 const EMPTY_FORM = {
-  name: '', description: '', installment_amount: '',
+  name: '', notes: '',
+  type: 'installment' as string,
+  installment_amount: '',
   mode: 'installments' as 'installments' | 'until_date',
-  total_installments: '', until_date: '',
-  due_day: '10', start_date: new Date().toISOString().split('T')[0],
+  total_installments: '',
+  until_date: '',
+  due_day: '10',
+  start_date: new Date().toISOString().split('T')[0],
   split_type: 'personal' as 'personal' | 'members',
 }
 
@@ -68,7 +101,6 @@ const MONTH_NAMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julh
 export default function BillsPage() {
   const { toast } = useToast()
   const [bills, setBills] = useState<Bill[]>([])
-  const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'contas' | 'relatorio'>('contas')
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -87,19 +119,25 @@ export default function BillsPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     setUserId(user.id)
-    const { data: mem } = await supabase.from('household_members').select('household_id').eq('user_id', user.id).single()
+
+    const { data: mem } = await supabase.from('household_members')
+      .select('household_id').eq('user_id', user.id).single()
     const hid = mem?.household_id ?? null
     setHouseholdId(hid)
     if (hid) {
       const { data: mems } = await supabase.from('household_members').select('id').eq('household_id', hid)
       setMemberCount(mems?.length ?? 1)
     }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any
-    const { data: billsData } = await db.from('fin_bills').select('*').eq('is_active', true).order('created_at', { ascending: false })
-    const { data: paysData } = await db.from('fin_bill_payments').select('*').eq('paid_by', user.id)
+    const { data: billsData } = await db
+      .from('fin_installments')
+      .select('*')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+
     setBills(billsData || [])
-    setPayments(paysData || [])
     setLoading(false)
   }, [])
 
@@ -109,12 +147,16 @@ export default function BillsPage() {
   function openEdit(bill: Bill) {
     setEditing(bill)
     setForm({
-      name: bill.name, description: bill.description || '',
+      name: bill.name,
+      notes: bill.notes || '',
+      type: bill.type,
       installment_amount: String(bill.installment_amount),
       mode: bill.total_installments ? 'installments' : 'until_date',
       total_installments: String(bill.total_installments || ''),
-      until_date: bill.until_date || '', due_day: String(bill.due_day),
-      start_date: bill.start_date, split_type: bill.split_type,
+      until_date: bill.until_date || '',
+      due_day: String(bill.due_day),
+      start_date: bill.start_date,
+      split_type: bill.split_type,
     })
     setShowModal(true)
   }
@@ -125,20 +167,32 @@ export default function BillsPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = createClient() as any
     const payload = {
-      name: form.name.trim(), description: form.description.trim() || null,
+      name: form.name.trim(),
+      notes: form.notes.trim() || null,
+      type: form.type,
       installment_amount: parseFloat(form.installment_amount),
-      total_installments: form.mode === 'installments' && form.total_installments ? parseInt(form.total_installments) : null,
+      total_installments: form.mode === 'installments' && form.total_installments
+        ? parseInt(form.total_installments) : null,
       until_date: form.mode === 'until_date' && form.until_date ? form.until_date : null,
-      due_day: parseInt(form.due_day) || 10, start_date: form.start_date,
-      split_type: form.split_type, split_count: form.split_type === 'members' ? memberCount : 1,
+      due_day: parseInt(form.due_day) || 10,
+      start_date: form.start_date,
+      split_type: form.split_type,
+      split_count: form.split_type === 'members' ? memberCount : 1,
       updated_at: new Date().toISOString(),
     }
+
     if (editing) {
-      const { error } = await db.from('fin_bills').update(payload).eq('id', editing.id)
+      const { error } = await db.from('fin_installments').update(payload).eq('id', editing.id)
       if (error) { toast(error.message, 'error'); setSaving(false); return }
       toast('Conta atualizada!')
     } else {
-      const { error } = await db.from('fin_bills').insert({ ...payload, created_by: userId, household_id: householdId || null })
+      const { error } = await db.from('fin_installments').insert({
+        ...payload,
+        user_id: userId,
+        household_id: householdId || null,
+        paid_installments: 0,
+        status: 'active',
+      })
       if (error) { toast(error.message, 'error'); setSaving(false); return }
       toast('Conta adicionada!')
     }
@@ -150,26 +204,37 @@ export default function BillsPage() {
     setTogglingPay(key)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = createClient() as any
+
+    let newPaid: number
     if (inst.isPaid) {
-      await db.from('fin_bill_payments').delete().eq('bill_id', bill.id).eq('installment_number', inst.number).eq('paid_by', userId)
+      // Desmarcar: volta para a parcela anterior
+      newPaid = inst.number - 1
       toast('Pagamento removido', 'info')
     } else {
-      const { error } = await db.from('fin_bill_payments').insert({
-        bill_id: bill.id, paid_by: userId, installment_number: inst.number,
-        due_date: inst.dueDate.toISOString().split('T')[0],
-        amount_paid: inst.myShare, paid_at: new Date().toISOString().split('T')[0],
-      })
-      if (error) { toast(error.message, 'error'); setTogglingPay(null); return }
+      // Marcar paga: avança o contador
+      newPaid = Math.max(bill.paid_installments, inst.number)
       toast('Parcela marcada como paga! ✓')
     }
-    setTogglingPay(null); load()
+
+    const { error } = await db.from('fin_installments')
+      .update({ paid_installments: newPaid, updated_at: new Date().toISOString() })
+      .eq('id', bill.id)
+
+    if (error) toast(error.message, 'error')
+    setTogglingPay(null)
+    load()
   }
 
   async function deleteBill() {
     if (!deleteTarget) return
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (createClient() as any).from('fin_bills').update({ is_active: false }).eq('id', deleteTarget.id)
-    toast('Conta removida', 'info'); setDeleteTarget(null); load()
+    await (createClient() as any)
+      .from('fin_installments')
+      .update({ status: 'inactive' })
+      .eq('id', deleteTarget.id)
+    toast('Conta removida', 'info')
+    setDeleteTarget(null)
+    load()
   }
 
   if (loading) return (
@@ -178,202 +243,233 @@ export default function BillsPage() {
     </div>
   )
 
-  const activeBills = bills.filter(b => b.is_active)
-  const paidSet = new Set(payments.map(p => `${p.bill_id}-${p.installment_number}`))
+  const myBills = bills.filter(b => b.user_id === userId)
+  const familyBills = bills.filter(b => b.user_id !== userId)
 
-  // ── Relatório: todos os vencimentos agrupados por mês ────────────────────
+  // ── Relatório: todos os vencimentos agrupados por mês ──
   interface ReportEntry { bill: Bill; inst: InstallmentRow }
-  const allEntries: ReportEntry[] = activeBills.flatMap(bill =>
-    billInstallments(bill).map(inst => ({
-      bill, inst: { ...inst, isPaid: paidSet.has(`${bill.id}-${inst.number}`) }
-    }))
+  const allEntries: ReportEntry[] = bills.flatMap(bill =>
+    billInstallments(bill).map(inst => ({ bill, inst }))
   )
   allEntries.sort((a, b) => a.inst.dueDate.getTime() - b.inst.dueDate.getTime())
 
-  // Group by year-month
   const byMonth: Record<string, ReportEntry[]> = {}
   allEntries.forEach(entry => {
-    const key = `${entry.inst.dueDate.getFullYear()}-${String(entry.inst.dueDate.getMonth()).padStart(2,'0')}`
+    const key = `${entry.inst.dueDate.getFullYear()}-${String(entry.inst.dueDate.getMonth()).padStart(2, '0')}`
     if (!byMonth[key]) byMonth[key] = []
     byMonth[key].push(entry)
   })
   const monthKeys = Object.keys(byMonth).sort()
+  const nowKey = `${new Date().getFullYear()}-${String(new Date().getMonth()).padStart(2, '0')}`
 
-  const nowKey = `${new Date().getFullYear()}-${String(new Date().getMonth()).padStart(2,'0')}`
+  const renderBillCard = (bill: Bill) => {
+    const insts = billInstallments(bill)
+    const paidCount = bill.paid_installments
+    const totalCount = insts.length
+    const pct = totalCount > 0 ? (paidCount / totalCount) * 100 : 0
+    const myShare = bill.split_type === 'members'
+      ? bill.installment_amount / (bill.split_count || 1)
+      : bill.installment_amount
+    const remaining = (totalCount - paidCount) * myShare
+    const isExpanded = expanded === bill.id
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const nextUnpaid = insts.find(i => !i.isPaid && i.dueDate >= today)
+    const overdueCount = insts.filter(i => !i.isPaid && i.dueDate < today).length
+    const canEdit = bill.user_id === userId
+
+    return (
+      <Card key={bill.id} className={overdueCount > 0 ? '!border-red-200' : ''}>
+        <CardContent className="p-0">
+          <div className="px-5 pt-5 pb-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-semibold text-[#1A2E1A]">{bill.name}</h3>
+                  {bill.type && TYPE_LABELS[bill.type] && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#F5F2EE] border border-[#E2DECE] text-[#5A7A5A]">
+                      {TYPE_LABELS[bill.type]}
+                    </span>
+                  )}
+                  {overdueCount > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-red-50 border border-red-200 text-red-600">
+                      <AlertCircle size={9} /> {overdueCount} atrasada{overdueCount > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {bill.split_type === 'members' && (
+                    <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-600">
+                      <Users size={9} /> ÷{bill.split_count}
+                    </span>
+                  )}
+                  {!canEdit && (
+                    <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-purple-50 border border-purple-200 text-purple-600">
+                      <Users size={9} /> família
+                    </span>
+                  )}
+                </div>
+                {bill.notes && <p className="text-xs text-[#8FAA8F] mt-0.5 truncate">{bill.notes}</p>}
+              </div>
+              {canEdit && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button onClick={() => openEdit(bill)} className="p-1.5 rounded-lg hover:bg-[#EEF5EB] text-[#8FAA8F] hover:text-[#3A6432] transition-colors">
+                    <Pencil size={13} />
+                  </button>
+                  <button onClick={() => setDeleteTarget(bill)} className="p-1.5 rounded-lg hover:bg-red-50 text-[#8FAA8F] hover:text-red-500 transition-colors">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-baseline gap-2 mt-2.5">
+              <span className="text-xl font-bold text-[#1A2E1A]">
+                {formatCurrency(myShare)}<span className="text-xs text-[#8FAA8F] font-normal ml-0.5">/mês</span>
+              </span>
+              {bill.split_type === 'members' && (
+                <span className="text-xs text-[#8FAA8F]">total {formatCurrency(bill.installment_amount)} ÷ {bill.split_count}</span>
+              )}
+              <span className="ml-auto text-xs font-medium text-[#5A7A5A]">{formatCurrency(remaining)} restante</span>
+            </div>
+
+            <div className="mt-3">
+              <div className="flex justify-between text-[10px] text-[#8FAA8F] mb-1.5">
+                <span>{paidCount} de {totalCount} parcelas pagas</span>
+                <span>{Math.min(pct, 100).toFixed(0)}%</span>
+              </div>
+              <div className="h-2 bg-[#EEF5EB] rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(pct, 100)}%`, background: pct >= 100 ? '#3A6432' : '#5A9A52' }} />
+              </div>
+            </div>
+
+            {nextUnpaid && (() => {
+              const s = getDueStatus(nextUnpaid.dueDate, false)
+              const dateStr = nextUnpaid.dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+              return <p className={`text-xs mt-2 font-medium ${s.color}`}>Próxima: {dateStr} (parcela {nextUnpaid.number}) — {s.label}</p>
+            })()}
+            {paidCount >= totalCount && totalCount > 0 && (
+              <p className="text-xs mt-2 font-medium text-[#3A6432]">✓ Todas as parcelas pagas!</p>
+            )}
+          </div>
+
+          <button
+            onClick={() => setExpanded(isExpanded ? null : bill.id)}
+            className="w-full flex items-center justify-center gap-1 py-2.5 border-t border-[#F0EDE6] text-xs text-[#8FAA8F] hover:text-[#3A6432] hover:bg-[#EEF5EB]/50 transition-colors"
+          >
+            {isExpanded ? <><ChevronUp size={13} /> Recolher</> : <><ChevronDown size={13} /> Ver {totalCount} parcelas</>}
+          </button>
+
+          {isExpanded && (
+            <ul className="border-t border-[#F0EDE6]">
+              {insts.map(inst => {
+                const key = `${bill.id}-${inst.number}`
+                const { color, label } = getDueStatus(inst.dueDate, inst.isPaid)
+                const fullDate = inst.dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                const weekday = inst.dueDate.toLocaleDateString('pt-BR', { weekday: 'long' })
+                return (
+                  <li key={inst.number} className={`flex items-center gap-3 px-5 py-3.5 border-b border-[#F0EDE6] last:border-0 ${inst.isPaid ? 'bg-[#FAFAF9]' : ''}`}>
+                    <button onClick={() => togglePayment(bill, inst)} disabled={togglingPay === key} className="shrink-0">
+                      {togglingPay === key
+                        ? <div className="w-5 h-5 border-2 border-[#C5D9C0] border-t-[#3A6432] rounded-full animate-spin" />
+                        : inst.isPaid
+                          ? <CheckCircle2 size={20} className="text-[#3A6432]" />
+                          : <Circle size={20} className="text-[#C5D9C0] hover:text-[#3A6432] transition-colors" />
+                      }
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${inst.isPaid ? 'line-through text-[#8FAA8F]' : 'text-[#1A2E1A]'}`}>
+                        {inst.number}ª parcela
+                      </p>
+                      <p className="text-xs text-[#8FAA8F]">{fullDate} · <span className="capitalize">{weekday}</span></p>
+                      <p className={`text-xs font-medium ${color}`}>{label}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`text-sm font-semibold ${inst.isPaid ? 'text-[#8FAA8F] line-through' : 'text-[#1A2E1A]'}`}>
+                        {formatCurrency(inst.myShare)}
+                      </p>
+                      {bill.split_type === 'members' && <p className="text-[10px] text-[#8FAA8F]">de {formatCurrency(inst.totalAmount)}</p>}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <div className="px-4 py-4 max-w-2xl mx-auto lg:px-6 lg:py-6 space-y-3">
 
       {/* Ações */}
       <div className="flex items-center justify-between">
-        <p className="text-xs text-[#8FAA8F]">{activeBills.length} conta{activeBills.length !== 1 ? 's' : ''} ativa{activeBills.length !== 1 ? 's' : ''}</p>
+        <p className="text-xs text-[#8FAA8F]">{bills.length} conta{bills.length !== 1 ? 's' : ''} ativa{bills.length !== 1 ? 's' : ''}</p>
         <Button onClick={openNew} size="sm"><Plus size={14} /> Nova conta</Button>
       </div>
 
       {/* Tabs */}
-      {activeBills.length > 0 && (
+      {bills.length > 0 && (
         <div className="flex rounded-xl overflow-hidden border border-[#E2DECE] bg-white">
-          <button
-            onClick={() => setTab('contas')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors ${tab === 'contas' ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F] hover:text-[#5A7A5A]'}`}
-          >
+          <button onClick={() => setTab('contas')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors ${tab === 'contas' ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F] hover:text-[#5A7A5A]'}`}>
             <LayoutList size={14} /> Contas
           </button>
-          <button
-            onClick={() => setTab('relatorio')}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors border-l border-[#E2DECE] ${tab === 'relatorio' ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F] hover:text-[#5A7A5A]'}`}
-          >
+          <button onClick={() => setTab('relatorio')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors border-l border-[#E2DECE] ${tab === 'relatorio' ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F] hover:text-[#5A7A5A]'}`}>
             <BarChart2 size={14} /> Relatório
           </button>
         </div>
       )}
 
-      {/* ── TAB: CONTAS ─────────────────────────────────────────────────────── */}
+      {/* ── TAB: CONTAS ── */}
       {tab === 'contas' && (
         <>
-          {activeBills.length === 0 && (
+          {bills.length === 0 && (
             <Card>
               <CardContent className="py-12 flex flex-col items-center gap-3 text-center">
                 <CalendarClock size={32} className="text-[#C5D9C0]" />
                 <p className="text-sm font-medium text-[#5A7A5A]">Nenhuma conta cadastrada</p>
-                <p className="text-xs text-[#8FAA8F]">Adicione financiamentos, mensalidades ou qualquer conta parcelada</p>
+                <p className="text-xs text-[#8FAA8F]">Adicione financiamentos, consórcios ou qualquer conta parcelada</p>
                 <Button onClick={openNew} size="sm" className="mt-1"><Plus size={14} /> Adicionar conta</Button>
               </CardContent>
             </Card>
           )}
 
-          {activeBills.map(bill => {
-            const insts = billInstallments(bill)
-            const instRows: InstallmentRow[] = insts.map(inst => ({ ...inst, isPaid: paidSet.has(`${bill.id}-${inst.number}`) }))
-            const paidCount = instRows.filter(i => i.isPaid).length
-            const totalCount = instRows.length
-            const pct = totalCount > 0 ? (paidCount / totalCount) * 100 : 0
-            const myShare = bill.installment_amount / bill.split_count
-            const remaining = (totalCount - paidCount) * myShare
-            const isExpanded = expanded === bill.id
-            const today = new Date(); today.setHours(0,0,0,0)
-            const nextUnpaid = instRows.find(i => !i.isPaid && i.dueDate >= today)
-            const overdueCount = instRows.filter(i => !i.isPaid && i.dueDate < today).length
+          {/* Minhas contas */}
+          {myBills.length > 0 && (
+            <div className="space-y-3">
+              {myBills.length < bills.length && (
+                <div className="flex items-center gap-2">
+                  <User size={13} className="text-[#8FAA8F]" />
+                  <p className="text-xs font-semibold text-[#8FAA8F] uppercase tracking-wide">Minhas contas</p>
+                </div>
+              )}
+              {myBills.map(bill => renderBillCard(bill))}
+            </div>
+          )}
 
-            return (
-              <Card key={bill.id} className={overdueCount > 0 ? '!border-red-200' : ''}>
-                <CardContent className="p-0">
-                  <div className="px-5 pt-5 pb-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-sm font-semibold text-[#1A2E1A]">{bill.name}</h3>
-                          {overdueCount > 0 && (
-                            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-red-50 border border-red-200 text-red-600">
-                              <AlertCircle size={9} /> {overdueCount} atrasada{overdueCount > 1 ? 's' : ''}
-                            </span>
-                          )}
-                          {bill.split_type === 'members' && (
-                            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-600">
-                              <Users size={9} /> ÷ {bill.split_count}
-                            </span>
-                          )}
-                        </div>
-                        {bill.description && <p className="text-xs text-[#8FAA8F] mt-0.5 truncate">{bill.description}</p>}
-                      </div>
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        <button onClick={() => openEdit(bill)} className="p-1.5 rounded-lg hover:bg-[#EEF5EB] text-[#8FAA8F] hover:text-[#3A6432] transition-colors">
-                          <Pencil size={13} />
-                        </button>
-                        <button onClick={() => setDeleteTarget(bill)} className="p-1.5 rounded-lg hover:bg-red-50 text-[#8FAA8F] hover:text-red-500 transition-colors">
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-baseline gap-2 mt-2.5">
-                      <span className="text-xl font-bold text-[#1A2E1A]">
-                        {formatCurrency(myShare)}<span className="text-xs text-[#8FAA8F] font-normal ml-0.5">/mês</span>
-                      </span>
-                      {bill.split_type === 'members' && (
-                        <span className="text-xs text-[#8FAA8F]">total {formatCurrency(bill.installment_amount)} ÷ {bill.split_count}</span>
-                      )}
-                      <span className="ml-auto text-xs font-medium text-[#5A7A5A]">{formatCurrency(remaining)} restante</span>
-                    </div>
-
-                    <div className="mt-3">
-                      <div className="flex justify-between text-[10px] text-[#8FAA8F] mb-1.5">
-                        <span>{paidCount} de {totalCount} parcelas pagas</span>
-                        <span>{pct.toFixed(0)}%</span>
-                      </div>
-                      <div className="h-2 bg-[#EEF5EB] rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: pct === 100 ? '#3A6432' : '#5A9A52' }} />
-                      </div>
-                    </div>
-
-                    {nextUnpaid && (() => {
-                      const s = getDueStatus(nextUnpaid.dueDate, false)
-                      const dateStr = nextUnpaid.dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                      return <p className={`text-xs mt-2 font-medium ${s.color}`}>Próxima: {dateStr} (parcela {nextUnpaid.number}) — {s.label}</p>
-                    })()}
-                    {paidCount === totalCount && totalCount > 0 && (
-                      <p className="text-xs mt-2 font-medium text-[#3A6432]">✓ Todas as parcelas pagas!</p>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => setExpanded(isExpanded ? null : bill.id)}
-                    className="w-full flex items-center justify-center gap-1 py-2.5 border-t border-[#F0EDE6] text-xs text-[#8FAA8F] hover:text-[#3A6432] hover:bg-[#EEF5EB]/50 transition-colors"
-                  >
-                    {isExpanded ? <><ChevronUp size={13} /> Recolher</> : <><ChevronDown size={13} /> Ver {totalCount} parcelas</>}
-                  </button>
-
-                  {isExpanded && (
-                    <ul className="border-t border-[#F0EDE6]">
-                      {instRows.map(inst => {
-                        const key = `${bill.id}-${inst.number}`
-                        const { color, label } = getDueStatus(inst.dueDate, inst.isPaid)
-                        const fullDate = inst.dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                        const weekday = inst.dueDate.toLocaleDateString('pt-BR', { weekday: 'long' })
-                        return (
-                          <li key={inst.number} className={`flex items-center gap-3 px-5 py-3.5 border-b border-[#F0EDE6] last:border-0 ${inst.isPaid ? 'bg-[#FAFAF9]' : ''}`}>
-                            <button onClick={() => togglePayment(bill, inst)} disabled={togglingPay === key} className="shrink-0">
-                              {togglingPay === key
-                                ? <div className="w-5 h-5 border-2 border-[#C5D9C0] border-t-[#3A6432] rounded-full animate-spin" />
-                                : inst.isPaid
-                                  ? <CheckCircle2 size={20} className="text-[#3A6432]" />
-                                  : <Circle size={20} className="text-[#C5D9C0] hover:text-[#3A6432] transition-colors" />
-                              }
-                            </button>
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-sm font-medium ${inst.isPaid ? 'line-through text-[#8FAA8F]' : 'text-[#1A2E1A]'}`}>
-                                {inst.number}ª parcela
-                              </p>
-                              <p className="text-xs text-[#8FAA8F]">{fullDate} · <span className="capitalize">{weekday}</span></p>
-                              <p className={`text-xs font-medium ${color}`}>{label}</p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className={`text-sm font-semibold ${inst.isPaid ? 'text-[#8FAA8F] line-through' : 'text-[#1A2E1A]'}`}>
-                                {formatCurrency(inst.myShare)}
-                              </p>
-                              {bill.split_type === 'members' && <p className="text-[10px] text-[#8FAA8F]">de {formatCurrency(inst.totalAmount)}</p>}
-                            </div>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
-            )
-          })}
+          {/* Contas da família */}
+          {familyBills.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mt-2">
+                <Users size={13} className="text-[#8FAA8F]" />
+                <p className="text-xs font-semibold text-[#8FAA8F] uppercase tracking-wide">Contas da família</p>
+              </div>
+              {familyBills.map(bill => renderBillCard(bill))}
+            </div>
+          )}
         </>
       )}
 
-      {/* ── TAB: RELATÓRIO ──────────────────────────────────────────────────── */}
+      {/* ── TAB: RELATÓRIO ── */}
       {tab === 'relatorio' && (
         <div className="space-y-4">
           {/* Resumo geral */}
           <div className="grid grid-cols-3 gap-3">
             {(() => {
               const totalAll = allEntries.reduce((s, e) => s + e.inst.myShare, 0)
-              const paidAll  = allEntries.filter(e => e.inst.isPaid).reduce((s, e) => s + e.inst.myShare, 0)
-              const leftAll  = totalAll - paidAll
+              const paidAll = allEntries.filter(e => e.inst.isPaid).reduce((s, e) => s + e.inst.myShare, 0)
+              const leftAll = totalAll - paidAll
               return (
                 <>
                   <Card><CardContent className="p-3 text-center">
@@ -400,8 +496,8 @@ export default function BillsPage() {
             const isCurrentMonth = key === nowKey
             const isPastMonth = key < nowKey
             const monthTotal = entries.reduce((s, e) => s + e.inst.myShare, 0)
-            const monthPaid  = entries.filter(e => e.inst.isPaid).reduce((s, e) => s + e.inst.myShare, 0)
-            const monthLeft  = monthTotal - monthPaid
+            const monthPaid = entries.filter(e => e.inst.isPaid).reduce((s, e) => s + e.inst.myShare, 0)
+            const monthLeft = monthTotal - monthPaid
             const overdueInMonth = entries.filter(e => !e.inst.isPaid && isPastMonth).length
 
             return (
@@ -409,9 +505,7 @@ export default function BillsPage() {
                 <CardHeader className={isCurrentMonth ? 'bg-[#EEF5EB]/60' : isPastMonth ? 'bg-[#FAFAF9]' : ''}>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-semibold text-[#1A2E1A]">
-                        {MONTH_NAMES[monthIdx]} {year}
-                      </h3>
+                      <h3 className="text-sm font-semibold text-[#1A2E1A]">{MONTH_NAMES[monthIdx]} {year}</h3>
                       {isCurrentMonth && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#3A6432] text-white font-medium">Atual</span>
                       )}
@@ -433,17 +527,16 @@ export default function BillsPage() {
                   <ul>
                     {entries
                       .sort((a, b) => a.inst.dueDate.getTime() - b.inst.dueDate.getTime())
-                      .map((entry, i) => {
+                      .map((entry) => {
                         const { color, bg, border, label } = getDueStatus(entry.inst.dueDate, entry.inst.isPaid)
                         const day = entry.inst.dueDate.getDate()
-                        const weekday = entry.inst.dueDate.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.','')
+                        const weekday = entry.inst.dueDate.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
                         const fullDate = entry.inst.dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
                         const key2 = `${entry.bill.id}-${entry.inst.number}`
                         return (
                           <li key={key2} className={`flex items-center gap-3 px-4 py-3.5 border-b border-[#F0EDE6] last:border-0 ${entry.inst.isPaid ? 'bg-[#FAFAF9]' : ''}`}>
-                            {/* Dia */}
                             <div className={`w-10 text-center rounded-lg py-1.5 shrink-0 border ${bg} ${border}`}>
-                              <p className={`text-sm font-bold leading-none ${color}`}>{String(day).padStart(2,'0')}</p>
+                              <p className={`text-sm font-bold leading-none ${color}`}>{String(day).padStart(2, '0')}</p>
                               <p className={`text-[9px] mt-0.5 leading-none capitalize ${color}`}>{weekday}</p>
                             </div>
                             <div className="flex-1 min-w-0">
@@ -497,13 +590,37 @@ export default function BillsPage() {
       {/* Modal adicionar/editar */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Editar conta' : 'Nova conta a pagar'} size="md">
         <div className="p-5 flex flex-col gap-4">
-          <Input label="Nome da conta" placeholder="ex: Financiamento do carro" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} autoFocus />
-          <Input label="Descrição (opcional)" placeholder="ex: Banco Itaú" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Valor por parcela (R$)" type="number" placeholder="0,00" value={form.installment_amount} onChange={e => setForm(f => ({ ...f, installment_amount: e.target.value }))} />
-            <Input label="Dia do vencimento" type="number" placeholder="10" value={form.due_day} onChange={e => setForm(f => ({ ...f, due_day: e.target.value }))} />
+          <Input label="Nome da conta" placeholder="ex: Consórcio Honda, Financiamento Caixa"
+            value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} autoFocus />
+
+          {/* Tipo */}
+          <div>
+            <p className="text-xs font-semibold text-[#5A7A5A] mb-2">Tipo</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {Object.entries(TYPE_LABELS).map(([v, label]) => (
+                <button key={v} type="button" onClick={() => setForm(f => ({ ...f, type: v }))}
+                  className={`py-2 px-2 text-xs font-medium rounded-xl border transition-colors ${
+                    form.type === v ? 'bg-[#EEF5EB] border-[#C5D9C0] text-[#3A6432]' : 'bg-white border-[#E2DECE] text-[#5A7A5A] hover:border-[#C5D9C0]'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-          <Input label="Data de início" type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
+
+          <Input label="Observação (opcional)" placeholder="ex: Banco Itaú, HONDA"
+            value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Valor da parcela (R$)" type="number" placeholder="0,00"
+              value={form.installment_amount} onChange={e => setForm(f => ({ ...f, installment_amount: e.target.value }))} />
+            <Input label="Dia do vencimento" type="number" placeholder="10"
+              value={form.due_day} onChange={e => setForm(f => ({ ...f, due_day: e.target.value }))} />
+          </div>
+
+          <Input label="Data da 1ª parcela" type="date"
+            value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
+
           <div>
             <p className="text-xs font-semibold text-[#5A7A5A] mb-2">Duração</p>
             <div className="flex rounded-xl overflow-hidden border border-[#E2DECE]">
@@ -518,11 +635,14 @@ export default function BillsPage() {
             </div>
             <div className="mt-2">
               {form.mode === 'installments'
-                ? <Input label="Número de parcelas" type="number" placeholder="12" value={form.total_installments} onChange={e => setForm(f => ({ ...f, total_installments: e.target.value }))} />
-                : <Input label="Pagar até" type="date" value={form.until_date} onChange={e => setForm(f => ({ ...f, until_date: e.target.value }))} />
+                ? <Input label="Número de parcelas" type="number" placeholder="ex: 75"
+                    value={form.total_installments} onChange={e => setForm(f => ({ ...f, total_installments: e.target.value }))} />
+                : <Input label="Pagar até" type="date"
+                    value={form.until_date} onChange={e => setForm(f => ({ ...f, until_date: e.target.value }))} />
               }
             </div>
           </div>
+
           {householdId && memberCount > 1 && (
             <div>
               <p className="text-xs font-semibold text-[#5A7A5A] mb-2">Divisão</p>
@@ -543,6 +663,7 @@ export default function BillsPage() {
               )}
             </div>
           )}
+
           <div className="flex gap-3 pt-1">
             <Button variant="secondary" onClick={() => setShowModal(false)} className="flex-1">Cancelar</Button>
             <Button onClick={save} loading={saving} disabled={!form.name.trim() || !form.installment_amount} className="flex-1">
