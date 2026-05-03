@@ -237,24 +237,24 @@ export default function ReportsPage() {
       </div>
 
       {/* ── Resumo do mês ── */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white border border-[#E2DECE] rounded-2xl p-4 shadow-sm">
-          <p className="text-sm font-medium text-[#5A7A5A] flex items-center gap-1 mb-2">
-            <TrendingUp size={14} className="text-[#3A6432]" /> Receitas
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-white border border-[#E2DECE] rounded-2xl p-3 shadow-sm">
+          <p className="text-xs font-medium text-[#5A7A5A] flex items-center gap-1 mb-1.5">
+            <TrendingUp size={12} className="text-[#3A6432]" /> Receitas
           </p>
-          <p className="text-base font-bold text-[#3A6432]">{formatCurrency(summary.income)}</p>
+          <p className="text-sm font-bold text-[#3A6432] truncate">{formatCurrency(summary.income)}</p>
         </div>
-        <div className="bg-white border border-[#E2DECE] rounded-2xl p-4 shadow-sm">
-          <p className="text-sm font-medium text-[#5A7A5A] flex items-center gap-1 mb-2">
-            <TrendingDown size={14} className="text-red-500" /> Despesas
+        <div className="bg-white border border-[#E2DECE] rounded-2xl p-3 shadow-sm">
+          <p className="text-xs font-medium text-[#5A7A5A] flex items-center gap-1 mb-1.5">
+            <TrendingDown size={12} className="text-red-500" /> Despesas
           </p>
-          <p className="text-base font-bold text-red-500">{formatCurrency(summary.expense)}</p>
+          <p className="text-sm font-bold text-red-500 truncate">{formatCurrency(summary.expense)}</p>
         </div>
-        <div className="bg-white border border-[#E2DECE] rounded-2xl p-4 shadow-sm">
-          <p className="text-sm font-medium text-[#5A7A5A] flex items-center gap-1 mb-2">
-            <Wallet size={14} className="text-[#5A7A5A]" /> Resultado
+        <div className="bg-white border border-[#E2DECE] rounded-2xl p-3 shadow-sm">
+          <p className="text-xs font-medium text-[#5A7A5A] flex items-center gap-1 mb-1.5">
+            <Wallet size={12} className="text-[#5A7A5A]" /> Resultado
           </p>
-          <p className={`text-base font-bold ${summary.balance >= 0 ? 'text-[#3A6432]' : 'text-red-500'}`}>
+          <p className={`text-sm font-bold truncate ${summary.balance >= 0 ? 'text-[#3A6432]' : 'text-red-500'}`}>
             {formatCurrency(summary.balance)}
           </p>
         </div>
