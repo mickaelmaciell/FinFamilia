@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, ArrowLeftRight, Wallet, Tag, Target,
-  PieChart, Users, Settings, TrendingUp, X, BarChart3, RefreshCw, CalendarClock
+  PieChart, Users, Settings, TrendingUp, X, BarChart3, RefreshCw, CalendarClock, CalendarDays
 } from 'lucide-react'
 
 // Sidebar tem a sensação da parede de acento verde floresta do quarto elegante
@@ -16,6 +16,7 @@ const groups = [
     items: [
       { href: '/dashboard', icon: LayoutDashboard, label: 'Início' },
       { href: '/bills', icon: CalendarClock, label: 'Contas a Pagar' },
+      { href: '/calendar', icon: CalendarDays, label: 'Calendário' },
       { href: '/accounts', icon: Wallet, label: 'Saldo em Contas' },
     ],
   },

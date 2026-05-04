@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Plus, AlertCircle, CheckCircle2, Clock, ArrowUpRight, Users, User } from 'lucide-react'
+import { Plus, AlertCircle, CheckCircle2, Clock, ArrowUpRight, Users, User, Calendar } from 'lucide-react'
 import Link from 'next/link'
 
 interface Bill {
@@ -171,6 +171,58 @@ export default function DashboardPage() {
   return (
     <div className="px-4 py-4 space-y-4 max-w-2xl mx-auto lg:px-6 lg:py-6">
 
+      {/* ── Alertas de vencimento ── */}
+      {(myOverdue.length > 0 || myDueSoon.length > 0) && (
+        <div className="space-y-2">
+          {myOverdue.length > 0 && (
+            <div className="flex items-start gap-3 p-4 rounded-2xl bg-red-50 border border-red-200">
+              <AlertCircle size={20} className="text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-red-700 mb-1.5">
+                  {myOverdue.length === 1 ? '⚠️ 1 conta atrasada' : `⚠️ ${myOverdue.length} contas atrasadas`}
+                </p>
+                <ul className="space-y-1.5">
+                  {myOverdue.map(r => (
+                    <li key={r.bill.id} className="flex items-center justify-between gap-3">
+                      <span className="text-xs text-red-700 font-medium truncate">
+                        {r.bill.name}
+                        <span className="font-normal text-red-500 ml-1">
+                          · venceu dia {r.inst.dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                        </span>
+                      </span>
+                      <span className="text-xs font-bold text-red-700 shrink-0">{formatCurrency(r.myShare)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          {myDueSoon.length > 0 && (
+            <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-200">
+              <Clock size={20} className="text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-amber-800 mb-1.5">
+                  {myDueSoon.length === 1 ? '🔔 1 conta vence em breve' : `🔔 ${myDueSoon.length} contas vencem em breve`}
+                </p>
+                <ul className="space-y-1.5">
+                  {myDueSoon.map(r => (
+                    <li key={r.bill.id} className="flex items-center justify-between gap-3">
+                      <span className="text-xs text-amber-800 font-medium truncate">
+                        {r.bill.name}
+                        <span className="font-normal text-amber-600 ml-1">
+                          · {r.daysUntil === 0 ? 'vence hoje!' : `em ${r.daysUntil} dia${r.daysUntil > 1 ? 's' : ''}`}
+                        </span>
+                      </span>
+                      <span className="text-xs font-bold text-amber-800 shrink-0">{formatCurrency(r.myShare)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Hero: resumo pessoal ── */}
       <Card>
         <CardContent className="p-5">
@@ -291,18 +343,39 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {/* ── Atalho para família ── */}
-      {!householdId && (
-        <Link href="/onboarding" className="flex items-center gap-3 p-4 rounded-2xl border border-dashed border-[#C5D9C0] hover:border-[#3A6432] hover:bg-[#EEF5EB]/40 transition-colors group">
+      {/* ── Atalhos rápidos ── */}
+      <div className="grid grid-cols-2 gap-3">
+        <Link href="/calendar" className="flex items-center gap-3 p-4 rounded-2xl border border-[#E2DECE] bg-white hover:border-[#3A6432] hover:bg-[#EEF5EB]/40 transition-colors group">
           <div className="w-9 h-9 rounded-xl bg-[#EEF5EB] flex items-center justify-center shrink-0">
-            <Users size={18} className="text-[#5A7A5A] group-hover:text-[#3A6432] transition-colors" />
+            <Calendar size={18} className="text-[#5A7A5A] group-hover:text-[#3A6432] transition-colors" />
           </div>
           <div>
-            <p className="text-sm font-medium text-[#5A7A5A] group-hover:text-[#3A6432]">Criar lar familiar</p>
-            <p className="text-xs text-[#8FAA8F]">Compartilhe e divida contas com a família</p>
+            <p className="text-sm font-medium text-[#1A2E1A]">Calendário</p>
+            <p className="text-xs text-[#8FAA8F]">Ver vencimentos</p>
           </div>
         </Link>
-      )}
+        {!householdId ? (
+          <Link href="/onboarding" className="flex items-center gap-3 p-4 rounded-2xl border border-dashed border-[#C5D9C0] hover:border-[#3A6432] hover:bg-[#EEF5EB]/40 transition-colors group">
+            <div className="w-9 h-9 rounded-xl bg-[#EEF5EB] flex items-center justify-center shrink-0">
+              <Users size={18} className="text-[#5A7A5A] group-hover:text-[#3A6432] transition-colors" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-[#5A7A5A] group-hover:text-[#3A6432]">Criar família</p>
+              <p className="text-xs text-[#8FAA8F]">Dividir contas</p>
+            </div>
+          </Link>
+        ) : (
+          <Link href="/bills" className="flex items-center gap-3 p-4 rounded-2xl border border-[#E2DECE] bg-white hover:border-[#3A6432] hover:bg-[#EEF5EB]/40 transition-colors group">
+            <div className="w-9 h-9 rounded-xl bg-[#EEF5EB] flex items-center justify-center shrink-0">
+              <Plus size={18} className="text-[#5A7A5A] group-hover:text-[#3A6432] transition-colors" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-[#1A2E1A]">Nova conta</p>
+              <p className="text-xs text-[#8FAA8F]">Adicionar conta</p>
+            </div>
+          </Link>
+        )}
+      </div>
     </div>
   )
 }

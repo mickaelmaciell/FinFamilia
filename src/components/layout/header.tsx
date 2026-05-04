@@ -1,8 +1,9 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { Menu, Bell, LogOut, User, Users, Check, X } from 'lucide-react'
+import { Menu, Bell, LogOut, User, Users, Check, X, AlertCircle, Clock } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
+import { formatCurrency } from '@/lib/utils'
 
 interface HeaderProps {
   title: string
@@ -18,11 +19,21 @@ interface PendingInvite {
   inviter_name: string
 }
 
+interface BillReminder {
+  id: string
+  name: string
+  amount: number
+  daysUntil: number
+  isOverdue: boolean
+  dueDate: Date
+}
+
 export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps) {
   const router = useRouter()
   const [showMenu, setShowMenu] = useState(false)
   const [showNotifs, setShowNotifs] = useState(false)
   const [invites, setInvites] = useState<PendingInvite[]>([])
+  const [billReminders, setBillReminders] = useState<BillReminder[]>([])
   const [accepting, setAccepting] = useState<string | null>(null)
 
   const loadInvites = useCallback(async () => {
@@ -43,7 +54,55 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
     })))
   }, [])
 
-  useEffect(() => { loadInvites() }, [loadInvites])
+  const loadBillReminders = useCallback(async () => {
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any
+    const { data: bills } = await db
+      .from('fin_installments')
+      .select('id, name, installment_amount, total_installments, paid_installments, start_date, due_day, split_type, split_count, until_date')
+      .eq('status', 'active')
+      .eq('user_id', user.id)
+    if (!bills) return
+
+    const now = new Date()
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const reminders: BillReminder[] = []
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    bills.forEach((bill: any) => {
+      const start = new Date(bill.start_date + 'T12:00:00')
+      const monthsDiff = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth())
+      if (monthsDiff < 0) return
+      const instNum = monthsDiff + 1
+      if (bill.total_installments && instNum > bill.total_installments) return
+      if (bill.until_date && new Date(bill.until_date + 'T12:00:00') < now) return
+      const isPaid = instNum <= bill.paid_installments
+      if (isPaid) return
+
+      const dueDate = new Date(now.getFullYear(), now.getMonth(), bill.due_day)
+      dueDate.setHours(0, 0, 0, 0)
+      const daysUntil = Math.ceil((dueDate.getTime() - today.getTime()) / 86400000)
+      if (daysUntil > 5) return // só mostrar próximas e atrasadas
+
+      const amount = bill.split_type === 'members'
+        ? bill.installment_amount / (bill.split_count || 1)
+        : bill.installment_amount
+
+      reminders.push({ id: bill.id, name: bill.name, amount, daysUntil, isOverdue: daysUntil < 0, dueDate })
+    })
+
+    // Ordenar: atrasadas primeiro, depois por dias restantes
+    reminders.sort((a, b) => a.daysUntil - b.daysUntil)
+    setBillReminders(reminders)
+  }, [])
+
+  useEffect(() => {
+    loadInvites()
+    loadBillReminders()
+  }, [loadInvites, loadBillReminders])
 
   async function acceptInvite(token: string) {
     setAccepting(token)
@@ -70,7 +129,7 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
   }
 
   const initials = userName?.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || 'U'
-  const unread = invites.length
+  const unread = invites.length + billReminders.length
 
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between px-4 h-14 bg-white/90 border-b border-[#E2DECE] backdrop-blur-xl">
@@ -106,13 +165,40 @@ export function Header({ title, onMenuClick, userName, avatarUrl }: HeaderProps)
                 <div className="px-4 py-3 border-b border-[#F0EDE6]">
                   <p className="text-sm font-semibold text-[#1A2E1A]">Notificações</p>
                 </div>
-                {invites.length === 0 ? (
+                {invites.length === 0 && billReminders.length === 0 ? (
                   <div className="px-4 py-6 text-center">
                     <Bell size={24} className="text-[#C5D9C0] mx-auto mb-2" />
                     <p className="text-sm text-[#8FAA8F]">Nenhuma notificação</p>
                   </div>
                 ) : (
-                  <ul>
+                  <ul className="max-h-80 overflow-y-auto">
+                    {/* Lembretes de contas */}
+                    {billReminders.map(r => (
+                      <li key={`bill-${r.id}`} className={`px-4 py-3 border-b border-[#F0EDE6] last:border-0 ${r.isOverdue ? 'bg-red-50/40' : 'bg-amber-50/30'}`}>
+                        <div className="flex items-start gap-3">
+                          <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 ${r.isOverdue ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+                            {r.isOverdue
+                              ? <AlertCircle size={14} className="text-red-500" />
+                              : <Clock size={14} className="text-amber-600" />
+                            }
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold leading-snug ${r.isOverdue ? 'text-red-700' : 'text-amber-800'}`}>
+                              {r.name}
+                            </p>
+                            <p className={`text-xs mt-0.5 ${r.isOverdue ? 'text-red-500' : 'text-amber-600'}`}>
+                              {r.isOverdue
+                                ? `Atrasada ${Math.abs(r.daysUntil)} dia${Math.abs(r.daysUntil) !== 1 ? 's' : ''}`
+                                : r.daysUntil === 0 ? 'Vence hoje!'
+                                : `Vence em ${r.daysUntil} dia${r.daysUntil > 1 ? 's' : ''}`
+                              }
+                              {' · '}<span className="font-semibold">{formatCurrency(r.amount)}</span>
+                            </p>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                    {/* Convites de família */}
                     {invites.map(inv => (
                       <li key={inv.id} className="px-4 py-3 border-b border-[#F0EDE6] last:border-0">
                         <div className="flex items-start gap-3">

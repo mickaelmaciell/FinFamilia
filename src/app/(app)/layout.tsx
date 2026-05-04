@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/client'
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Início',
   '/bills': 'Contas a Pagar',
+  '/calendar': 'Calendário de Vencimentos',
   '/transactions': 'Lançamentos',
   '/accounts': 'Contas',
   '/categories': 'Categorias',

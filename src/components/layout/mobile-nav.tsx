@@ -2,25 +2,26 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { LayoutDashboard, CalendarClock, Wallet, Users, MoreHorizontal } from 'lucide-react'
+import { LayoutDashboard, CalendarClock, CalendarDays, Users, MoreHorizontal } from 'lucide-react'
 import { useState } from 'react'
-import { ArrowLeftRight, Target, PieChart, Tag, BarChart3, RefreshCw, Settings } from 'lucide-react'
+import { ArrowLeftRight, Target, PieChart, Tag, BarChart3, RefreshCw, Settings, Wallet } from 'lucide-react'
 
 const primary = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Início' },
-  { href: '/bills', icon: CalendarClock, label: 'Contas' },
-  { href: '/accounts', icon: Wallet, label: 'Saldo' },
-  { href: '/household', icon: Users, label: 'Família' },
+  { href: '/dashboard',  icon: LayoutDashboard, label: 'Início' },
+  { href: '/bills',      icon: CalendarClock,   label: 'Contas' },
+  { href: '/calendar',   icon: CalendarDays,    label: 'Calendário' },
+  { href: '/household',  icon: Users,           label: 'Família' },
 ]
 
 const secondary = [
-  { href: '/transactions', icon: ArrowLeftRight, label: 'Lançamentos' },
-  { href: '/goals', icon: Target, label: 'Metas' },
-  { href: '/budgets', icon: BarChart3, label: 'Orçamentos' },
-  { href: '/reports', icon: PieChart, label: 'Relatórios' },
-  { href: '/recurring', icon: RefreshCw, label: 'Recorrentes' },
-  { href: '/categories', icon: Tag, label: 'Categorias' },
-  { href: '/settings', icon: Settings, label: 'Configurações' },
+  { href: '/accounts',     icon: Wallet,         label: 'Saldo' },
+  { href: '/transactions', icon: ArrowLeftRight,  label: 'Lançamentos' },
+  { href: '/goals',        icon: Target,          label: 'Metas' },
+  { href: '/budgets',      icon: BarChart3,       label: 'Orçamentos' },
+  { href: '/reports',      icon: PieChart,        label: 'Relatórios' },
+  { href: '/recurring',    icon: RefreshCw,       label: 'Recorrentes' },
+  { href: '/categories',   icon: Tag,             label: 'Categorias' },
+  { href: '/settings',     icon: Settings,        label: 'Config.' },
 ]
 
 export function MobileNav() {
