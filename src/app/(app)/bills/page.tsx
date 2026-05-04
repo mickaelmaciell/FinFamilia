@@ -173,9 +173,15 @@ const EMPTY_FORM = {
   name: '', notes: '',
   billCategory: 'parcela' as 'parcela' | 'fixa',
   type: 'installment' as string,
-  installment_amount: '',         // sempre valor por parcela
-  my_share_amount: '',            // valor da parte do usuário (modo depende de shareMode)
-  shareMode: 'total' as 'total' | 'perInstallment', // como o usuário quer informar a divisão
+  installment_amount: '',
+  my_share_amount: '',
+  /**
+   * inputMode controla como o usuário informa os valores quando billCategory='parcela'
+   * e total_installments > 1:
+   *   'perInstallment' → os campos mostram o valor por parcela (armazenado diretamente)
+   *   'total'          → os campos mostram o total da compra (dividido por nº parcelas ao salvar)
+   */
+  inputMode: 'perInstallment' as 'perInstallment' | 'total',
   mode: 'installments' as 'installments' | 'until_date',
   total_installments: '',
   until_date: '',
@@ -257,7 +263,7 @@ export default function BillsPage() {
       type: bill.type,
       installment_amount: String(bill.installment_amount).replace('.', ','),
       my_share_amount: bill.my_share_amount != null ? String(bill.my_share_amount).replace('.', ',') : '',
-      shareMode: 'perInstallment', // ao editar, já está em valor por parcela
+      inputMode: 'perInstallment' as 'perInstallment' | 'total', // ao editar, já está em valor por parcela
       mode: bill.total_installments ? 'installments' : 'until_date',
       total_installments: String(bill.total_installments || ''),
       until_date: bill.until_date || '',
@@ -274,17 +280,23 @@ export default function BillsPage() {
     if (!form.name.trim() || !form.installment_amount) return
     setSaving(true)
 
-    const totalInstAmt = parseMoney(form.installment_amount) // valor por parcela
     const numParcelas = parseInt(form.total_installments) || 1
+    // Verifica se o usuário informou os valores como totais da compra (não por parcela)
+    const isInputTotal = form.inputMode === 'total'
+      && form.billCategory === 'parcela'
+      && form.mode === 'installments'
+      && numParcelas > 1
+
+    // Sempre armazenar valor por parcela
+    const totalInstAmt = isInputTotal
+      ? parseMoney(form.installment_amount) / numParcelas
+      : parseMoney(form.installment_amount)
 
     // Calcular my_share_amount (sempre em valor por parcela)
     let mySharePerInst: number | null = null
     if (form.split_type === 'members' && form.my_share_amount) {
       const inputAmt = parseMoney(form.my_share_amount)
-      // Se "total": o usuário informou o total que vai pagar no período → dividir por parcelas
-      mySharePerInst = (form.shareMode === 'total' && numParcelas > 1)
-        ? inputAmt / numParcelas
-        : inputAmt
+      mySharePerInst = isInputTotal ? inputAmt / numParcelas : inputAmt
     }
 
     const payload = {
@@ -382,20 +394,22 @@ export default function BillsPage() {
   const nowKey = `${new Date().getFullYear()}-${String(new Date().getMonth()).padStart(2, '0')}`
 
   // ── Cálculos do formulário (tempo-real) ───────────────────────────────────
-  const formTotalInstAmt  = parseMoney(form.installment_amount)
-  const formMyShareInput  = parseMoney(form.my_share_amount)
+  const formInputInstAmt  = parseMoney(form.installment_amount)  // raw input (pode ser total ou por parcela)
+  const formMyShareInput  = parseMoney(form.my_share_amount)     // raw input (idem)
   const formNumParcelas   = parseInt(form.total_installments) || 1
-  const showShareMode     = form.billCategory === 'parcela' && form.mode === 'installments' && formNumParcelas > 1
+  // Mostrar toggle de modo apenas quando fizer sentido (parcelamento com N>1 parcelas)
+  const showInputMode     = form.billCategory === 'parcela' && form.mode === 'installments' && formNumParcelas > 1
+  const isInputTotal      = form.inputMode === 'total' && showInputMode
 
-  const myPerInst   = (form.shareMode === 'total' && showShareMode)
-    ? formMyShareInput / formNumParcelas
-    : formMyShareInput
-  const myTotal     = myPerInst * formNumParcelas
-  const otherPerInst  = formTotalInstAmt > 0 ? Math.max(0, formTotalInstAmt - myPerInst) : 0
-  const otherTotal    = otherPerInst * formNumParcelas
-  const myPct         = formTotalInstAmt > 0 && myPerInst > 0 ? (myPerInst / formTotalInstAmt * 100) : 0
-  const otherPct      = 100 - myPct
-  const showCalc      = form.split_type === 'members' && formTotalInstAmt > 0 && formMyShareInput > 0 && myPerInst < formTotalInstAmt && myPerInst > 0
+  // Converter para valor por parcela (base de todos os cálculos)
+  const perInstAmt   = isInputTotal ? formInputInstAmt / formNumParcelas : formInputInstAmt
+  const myPerInst    = isInputTotal ? formMyShareInput / formNumParcelas : formMyShareInput
+  const myTotal      = myPerInst * formNumParcelas
+  const otherPerInst = perInstAmt > 0 ? Math.max(0, perInstAmt - myPerInst) : 0
+  const otherTotal   = otherPerInst * formNumParcelas
+  const myPct        = perInstAmt > 0 && myPerInst > 0 ? (myPerInst / perInstAmt * 100) : 0
+  const otherPct     = 100 - myPct
+  const showCalc     = form.split_type === 'members' && perInstAmt > 0 && formMyShareInput > 0 && myPerInst < perInstAmt && myPerInst > 0
 
   // ── Renderizar card de conta ──────────────────────────────────────────────
   const renderBillCard = (bill: Bill) => {
@@ -851,9 +865,13 @@ export default function BillsPage() {
           {/* Valor e vencimento */}
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label={form.billCategory === 'fixa' ? 'Valor mensal (R$)' : 'Valor da parcela (R$)'}
+              label={
+                form.billCategory === 'fixa' ? 'Valor mensal (R$)'
+                : isInputTotal ? 'Valor total da compra (R$)'
+                : 'Valor da parcela (R$)'
+              }
               type="text" inputMode="decimal"
-              placeholder="ex: 451,00"
+              placeholder={isInputTotal ? 'ex: 1.024,00' : 'ex: 451,00'}
               value={form.installment_amount}
               onChange={e => setForm(f => ({ ...f, installment_amount: e.target.value }))}
             />
@@ -941,25 +959,32 @@ export default function BillsPage() {
 
                   {/* Minha parte */}
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-xs font-semibold text-[#5A7A5A]">Minha parte (R$)</p>
-                      {showShareMode && (
+                    {/* Toggle: os valores informados são por parcela ou totais? */}
+                    {showInputMode && (
+                      <div className="flex items-center justify-between mb-2 px-1">
+                        <p className="text-[11px] text-[#8FAA8F]">Como você quer informar os valores?</p>
                         <div className="flex rounded-lg overflow-hidden border border-[#E2DECE] text-[10px]">
-                          {(['total', 'perInstallment'] as const).map((m, i) => (
-                            <button key={m} type="button" onClick={() => setForm(f => ({ ...f, shareMode: m }))}
-                              className={`px-2.5 py-1 font-semibold transition-colors ${i ? 'border-l border-[#E2DECE]' : ''} ${form.shareMode === m ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F]'}`}>
+                          {(['perInstallment', 'total'] as const).map((m, i) => (
+                            <button key={m} type="button"
+                              onClick={() => setForm(f => ({ ...f, inputMode: m }))}
+                              className={`px-2.5 py-1 font-semibold transition-colors ${i ? 'border-l border-[#E2DECE]' : ''} ${form.inputMode === m ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F]'}`}>
                               {m === 'total' ? 'Total' : '/parcela'}
                             </button>
                           ))}
                         </div>
-                      )}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-xs font-semibold text-[#5A7A5A]">
+                        {isInputTotal ? 'Minha parte total (R$)' : 'Minha parte por parcela (R$)'}
+                      </p>
                     </div>
                     <Input
                       type="text" inputMode="decimal"
                       placeholder={
-                        form.shareMode === 'total' && showShareMode
-                          ? `Total que vou pagar (ex: ${(formTotalInstAmt * formNumParcelas / 2).toFixed(2).replace('.', ',')})`
-                          : `Por parcela (ex: ${(formTotalInstAmt / 2).toFixed(2).replace('.', ',')})`
+                        isInputTotal
+                          ? `Total que vou pagar (ex: ${(formInputInstAmt / 2).toFixed(2).replace('.', ',')})`
+                          : `Por parcela (ex: ${(perInstAmt / 2).toFixed(2).replace('.', ',')})`
                       }
                       value={form.my_share_amount}
                       onChange={e => setForm(f => ({ ...f, my_share_amount: e.target.value }))}
@@ -969,10 +994,18 @@ export default function BillsPage() {
                   {/* Cálculo em tempo-real */}
                   {showCalc && (
                     <div className="space-y-1.5">
-                      {form.shareMode === 'total' && showShareMode && (
-                        <p className="text-[11px] text-[#5A7A5A] pl-1">
-                          = <span className="font-semibold">{formatCurrency(myPerInst)}</span>/parcela × {formNumParcelas} parcelas
-                        </p>
+                      {/* Mostrar breakdown por parcela quando em modo total */}
+                      {isInputTotal && formNumParcelas > 1 && (
+                        <div className="px-3 py-2 rounded-lg bg-[#EEF5EB] border border-[#C5D9C0]">
+                          <p className="text-[11px] text-[#5A7A5A]">
+                            <span className="font-semibold">{formatCurrency(formInputInstAmt)}</span> total ÷ {formNumParcelas} parcelas
+                            = <span className="font-semibold text-[#1A2E1A]">{formatCurrency(perInstAmt)}/parcela</span>
+                          </p>
+                          <p className="text-[11px] text-[#5A7A5A] mt-0.5">
+                            Minha parte: <span className="font-semibold">{formatCurrency(formMyShareInput)}</span> total
+                            = <span className="font-semibold text-[#3A6432]">{formatCurrency(myPerInst)}/parcela</span>
+                          </p>
+                        </div>
                       )}
                       <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#F5F2EE] border border-[#E2DECE]">
                         <div>
