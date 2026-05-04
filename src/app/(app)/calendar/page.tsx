@@ -25,8 +25,13 @@ interface Bill {
   status: string
 }
 
-function getMyShare(bill: Bill): number {
-  if (bill.my_share_amount != null) return bill.my_share_amount
+function getViewerShare(bill: Bill, viewerId: string): number {
+  const isOwner = bill.user_id === viewerId
+  if (bill.my_share_amount != null) {
+    return isOwner
+      ? bill.my_share_amount
+      : Math.max(0, bill.installment_amount - bill.my_share_amount)
+  }
   if (bill.split_type === 'members') return bill.installment_amount / (bill.split_count || 1)
   return bill.installment_amount
 }
@@ -54,6 +59,7 @@ const FIXED_BILL_TYPES = ['agua', 'luz', 'gas', 'internet', 'condominio', 'saude
 export default function CalendarPage() {
   const [bills, setBills] = useState<Bill[]>([])
   const [loading, setLoading] = useState(true)
+  const [userId, setUserId] = useState('')
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
@@ -64,6 +70,7 @@ export default function CalendarPage() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    setUserId(user.id)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any
     const { data } = await db
@@ -103,7 +110,7 @@ export default function CalendarPage() {
         if (new Date(year, month, day) > until) return []
       }
 
-      const amount = getMyShare(bill)
+      const amount = getViewerShare(bill, userId)
       const isPaid = instNum <= bill.paid_installments
 
       return [{

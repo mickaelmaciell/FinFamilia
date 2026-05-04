@@ -25,8 +25,14 @@ interface Bill {
   status: string
 }
 
-function getMyShare(bill: Bill): number {
-  if (bill.my_share_amount != null) return bill.my_share_amount
+/** Parcela correta para o viewer — dono vê a parte dele, familiar vê a parte dele */
+function getViewerShare(bill: Bill, viewerId: string): number {
+  const isOwner = bill.user_id === viewerId
+  if (bill.my_share_amount != null) {
+    return isOwner
+      ? bill.my_share_amount
+      : Math.max(0, bill.installment_amount - bill.my_share_amount)
+  }
   if (bill.split_type === 'members') return bill.installment_amount / (bill.split_count || 1)
   return bill.installment_amount
 }
@@ -95,7 +101,7 @@ export default function DashboardPage() {
     if (!inst) return null
     const isPaid = inst.number <= bill.paid_installments
     const isMine = bill.user_id === userId
-    const myShare = getMyShare(bill)
+    const myShare = getViewerShare(bill, userId)
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const due = new Date(inst.dueDate); due.setHours(0, 0, 0, 0)
     const daysUntil = Math.ceil((due.getTime() - today.getTime()) / 86400000)

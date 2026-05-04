@@ -50,7 +50,7 @@ const CHART_TOOLTIP = {
 }
 
 /** Retorna o status da parcela de um bill em determinado mês/ano */
-function getInstallmentStatus(bill: Installment, y2: number, m2: number): { amount: number; isPaid: boolean; instNum: number; dueDate: Date } | null {
+function getInstallmentStatus(bill: Installment, y2: number, m2: number, currentUserId: string): { amount: number; isPaid: boolean; instNum: number; dueDate: Date } | null {
   const start = new Date(bill.start_date + 'T12:00:00')
   const monthsDiff = (y2 - start.getFullYear()) * 12 + (m2 - 1 - start.getMonth())
   if (monthsDiff < 0) return null
@@ -61,10 +61,16 @@ function getInstallmentStatus(bill: Installment, y2: number, m2: number): { amou
     const until = new Date(bill.until_date + 'T12:00:00')
     if (new Date(y2, m2 - 1, bill.due_day) > until) return null
   }
+  // Cada membro da família vê a sua parte (dono: my_share; familiar: total - my_share)
+  const isOwner = bill.user_id === currentUserId
   let myShare: number
-  if (bill.my_share_amount != null) myShare = bill.my_share_amount
-  else if (bill.split_type === 'members') myShare = bill.installment_amount / (bill.split_count || 1)
-  else myShare = bill.installment_amount
+  if (bill.my_share_amount != null) {
+    myShare = isOwner ? bill.my_share_amount : Math.max(0, bill.installment_amount - bill.my_share_amount)
+  } else if (bill.split_type === 'members') {
+    myShare = bill.installment_amount / (bill.split_count || 1)
+  } else {
+    myShare = bill.installment_amount
+  }
   return { amount: myShare, isPaid: instNum <= bill.paid_installments, instNum, dueDate: new Date(y2, m2 - 1, bill.due_day) }
 }
 
@@ -93,12 +99,14 @@ export default function ReportsPage() {
   const [billStatuses, setBillStatuses] = useState<BillStatus[]>([])
   const [memberView, setMemberView] = useState<'all' | string>('all')
   const [members, setMembers] = useState<{ id: string; name: string }[]>([])
+  const [currentUserId, setCurrentUserId] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+    setCurrentUserId(user.id)
 
     const { data: memberRow } = await supabase
       .from('household_members').select('household_id').eq('user_id', user.id).single()
@@ -142,7 +150,7 @@ export default function ReportsPage() {
 
       let instPaid = 0, instToPay = 0
       installments.forEach(bill => {
-        const st = getInstallmentStatus(bill, y2, m2)
+        const st = getInstallmentStatus(bill, y2, m2, currentUserId)
         if (!st) return
         if (st.isPaid) instPaid += st.amount + (txExpense > 0 ? 0 : 0)
         else instToPay += st.amount
@@ -169,7 +177,7 @@ export default function ReportsPage() {
     const statuses: BillStatus[] = []
 
     installments.forEach(bill => {
-      const st = getInstallmentStatus(bill, year, month)
+      const st = getInstallmentStatus(bill, year, month, currentUserId)
       const tot = totalInstallments(bill)
       if (st) {
         if (st.isPaid) instPaidCur += st.amount
@@ -201,7 +209,7 @@ export default function ReportsPage() {
       }
     })
     installments.forEach(bill => {
-      const st = getInstallmentStatus(bill, year, month)
+      const st = getInstallmentStatus(bill, year, month, currentUserId)
       if (!st || !st.isPaid) return
       const label = TYPE_LABELS[bill.type] || 'Parcelas'
       const color = TYPE_COLORS[bill.type] || '#6B7280'
