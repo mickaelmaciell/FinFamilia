@@ -14,6 +14,7 @@ interface Bill {
   name: string
   type: string
   installment_amount: number
+  my_share_amount?: number | null
   total_installments: number | null
   paid_installments: number
   start_date: string
@@ -22,6 +23,12 @@ interface Bill {
   split_count: number
   until_date?: string | null
   status: string
+}
+
+function getMyShare(bill: Bill): number {
+  if (bill.my_share_amount != null) return bill.my_share_amount
+  if (bill.split_type === 'members') return bill.installment_amount / (bill.split_count || 1)
+  return bill.installment_amount
 }
 
 interface CalendarBill {
@@ -96,9 +103,7 @@ export default function CalendarPage() {
         if (new Date(year, month, day) > until) return []
       }
 
-      const amount = bill.split_type === 'members'
-        ? bill.installment_amount / (bill.split_count || 1)
-        : bill.installment_amount
+      const amount = getMyShare(bill)
       const isPaid = instNum <= bill.paid_installments
 
       return [{

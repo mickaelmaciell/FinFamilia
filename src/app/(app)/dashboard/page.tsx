@@ -12,6 +12,7 @@ interface Bill {
   name: string
   type: string
   installment_amount: number
+  my_share_amount?: number | null
   total_installments: number | null
   paid_installments: number
   start_date: string
@@ -22,6 +23,12 @@ interface Bill {
   household_id?: string | null
   notes?: string | null
   status: string
+}
+
+function getMyShare(bill: Bill): number {
+  if (bill.my_share_amount != null) return bill.my_share_amount
+  if (bill.split_type === 'members') return bill.installment_amount / (bill.split_count || 1)
+  return bill.installment_amount
 }
 
 function getThisMonthInstallment(bill: Bill): { number: number; dueDate: Date } | null {
@@ -88,9 +95,7 @@ export default function DashboardPage() {
     if (!inst) return null
     const isPaid = inst.number <= bill.paid_installments
     const isMine = bill.user_id === userId
-    const myShare = bill.split_type === 'members'
-      ? bill.installment_amount / (bill.split_count || 1)
-      : bill.installment_amount
+    const myShare = getMyShare(bill)
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const due = new Date(inst.dueDate); due.setHours(0, 0, 0, 0)
     const daysUntil = Math.ceil((due.getTime() - today.getTime()) / 86400000)
@@ -142,7 +147,7 @@ export default function DashboardPage() {
             </p>
             {bill.split_type === 'members' && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#EEF5EB] border border-[#C5D9C0] text-[#5A7A5A] shrink-0">
-                ÷{bill.split_count}
+                dividida
               </span>
             )}
           </div>

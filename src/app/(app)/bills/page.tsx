@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/toast'
 import {
   Plus, ChevronDown, ChevronUp, CheckCircle2, Circle,
   Trash2, Pencil, Users, User, CalendarClock, AlertCircle,
-  LayoutList, BarChart2, Repeat
+  LayoutList, BarChart2, Repeat, TrendingDown, Target
 } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
@@ -20,6 +20,7 @@ interface Bill {
   type: string
   notes?: string | null
   installment_amount: number
+  my_share_amount?: number | null
   total_installments: number | null
   paid_installments: number
   until_date?: string | null
@@ -39,17 +40,30 @@ interface InstallmentRow {
   isPaid: boolean
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────
+function getMyShare(bill: Bill): number {
+  if (bill.my_share_amount != null) return bill.my_share_amount
+  if (bill.split_type === 'members') return bill.installment_amount / (bill.split_count || 1)
+  return bill.installment_amount
+}
+
+function getBillEndDate(bill: Bill): Date | null {
+  if (!bill.total_installments) return null
+  const start = new Date(bill.start_date + 'T12:00:00')
+  return new Date(start.getFullYear(), start.getMonth() + bill.total_installments - 1, bill.due_day)
+}
+
 // ── Tipos de parcelamento ──────────────────────────────────────────────
 const TYPE_LABELS: Record<string, string> = {
-  consortium: 'Consórcio',
-  installment: 'Parcelamento',
-  financing: 'Financiamento',
+  consortium:   'Consórcio',
+  installment:  'Parcelamento',
+  financing:    'Financiamento',
   subscription: 'Assinatura',
-  other: 'Outro',
+  other:        'Outro',
 }
 
 // ── Tipos de contas fixas ──────────────────────────────────────────────
-const FIXED_BILL_TYPES = ['agua', 'luz', 'gas', 'internet', 'condominio', 'saude', 'seguro', 'aluguel', 'outro_fixo']
+const FIXED_BILL_TYPES = ['agua','luz','gas','internet','condominio','saude','seguro','aluguel','outro_fixo']
 
 const FIXED_TYPE_LABELS: Record<string, string> = {
   agua:       '💧 Água',
@@ -63,16 +77,12 @@ const FIXED_TYPE_LABELS: Record<string, string> = {
   outro_fixo: '📋 Outro fixo',
 }
 
-function isFixed(bill: Bill) {
-  return FIXED_BILL_TYPES.includes(bill.type)
-}
+function isFixed(bill: Bill) { return FIXED_BILL_TYPES.includes(bill.type) }
 
 function billInstallments(bill: Bill): InstallmentRow[] {
   const fixedBill = isFixed(bill)
   const start = new Date(bill.start_date + 'T12:00:00')
-  const myShare = bill.split_type === 'members'
-    ? bill.installment_amount / (bill.split_count || 1)
-    : bill.installment_amount
+  const myShare = getMyShare(bill)
 
   let startInstNum = 1
   let count = 0
@@ -84,7 +94,6 @@ function billInstallments(bill: Bill): InstallmentRow[] {
     let d = new Date(start)
     while (d <= until && count < 600) { count++; d = new Date(d.getFullYear(), d.getMonth() + 1, 1) }
   } else if (fixedBill) {
-    // Para contas fixas: mostrar 6 meses passados + 12 meses futuros
     const now = new Date()
     const sixAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1)
     const twelveFwd = new Date(now.getFullYear(), now.getMonth() + 12, 1)
@@ -127,6 +136,7 @@ const EMPTY_FORM = {
   billCategory: 'parcela' as 'parcela' | 'fixa',
   type: 'installment' as string,
   installment_amount: '',
+  my_share_amount: '',
   mode: 'installments' as 'installments' | 'until_date',
   total_installments: '',
   until_date: '',
@@ -147,7 +157,6 @@ export default function BillsPage() {
   const [saving, setSaving] = useState(false)
   const [userId, setUserId] = useState('')
   const [householdId, setHouseholdId] = useState<string | null>(null)
-  const [memberCount, setMemberCount] = useState(1)
   const [togglingPay, setTogglingPay] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Bill | null>(null)
 
@@ -161,10 +170,6 @@ export default function BillsPage() {
       .select('household_id').eq('user_id', user.id).single()
     const hid = mem?.household_id ?? null
     setHouseholdId(hid)
-    if (hid) {
-      const { data: mems } = await supabase.from('household_members').select('id').eq('household_id', hid)
-      setMemberCount(mems?.length ?? 1)
-    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any
@@ -181,6 +186,7 @@ export default function BillsPage() {
   useEffect(() => { load() }, [load])
 
   function openNew() { setEditing(null); setForm({ ...EMPTY_FORM }); setShowModal(true) }
+
   function openEdit(bill: Bill) {
     setEditing(bill)
     const fixedBill = isFixed(bill)
@@ -190,6 +196,7 @@ export default function BillsPage() {
       billCategory: fixedBill ? 'fixa' : 'parcela',
       type: bill.type,
       installment_amount: String(bill.installment_amount),
+      my_share_amount: bill.my_share_amount != null ? String(bill.my_share_amount) : '',
       mode: bill.total_installments ? 'installments' : 'until_date',
       total_installments: String(bill.total_installments || ''),
       until_date: bill.until_date || '',
@@ -205,11 +212,16 @@ export default function BillsPage() {
     setSaving(true)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = createClient() as any
+
+    const myShareAmt = form.split_type === 'members' && form.my_share_amount
+      ? parseFloat(form.my_share_amount) : null
+
     const payload = {
       name: form.name.trim(),
       notes: form.notes.trim() || null,
       type: form.type,
       installment_amount: parseFloat(form.installment_amount),
+      my_share_amount: myShareAmt,
       total_installments: form.billCategory === 'parcela' && form.mode === 'installments' && form.total_installments
         ? parseInt(form.total_installments) : null,
       until_date: form.billCategory === 'parcela' && form.mode === 'until_date' && form.until_date
@@ -217,7 +229,7 @@ export default function BillsPage() {
       due_day: parseInt(form.due_day) || 10,
       start_date: form.start_date,
       split_type: form.split_type,
-      split_count: form.split_type === 'members' ? memberCount : 1,
+      split_count: form.split_type === 'members' ? 2 : 1,
       updated_at: new Date().toISOString(),
     }
 
@@ -244,35 +256,21 @@ export default function BillsPage() {
     setTogglingPay(key)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = createClient() as any
-
     let newPaid: number
-    if (inst.isPaid) {
-      newPaid = inst.number - 1
-      toast('Pagamento removido', 'info')
-    } else {
-      newPaid = Math.max(bill.paid_installments, inst.number)
-      toast('Pagamento registrado! ✓')
-    }
-
+    if (inst.isPaid) { newPaid = inst.number - 1; toast('Pagamento removido', 'info') }
+    else { newPaid = Math.max(bill.paid_installments, inst.number); toast('Pagamento registrado! ✓') }
     const { error } = await db.from('fin_installments')
       .update({ paid_installments: newPaid, updated_at: new Date().toISOString() })
       .eq('id', bill.id)
-
     if (error) toast(error.message, 'error')
-    setTogglingPay(null)
-    load()
+    setTogglingPay(null); load()
   }
 
   async function deleteBill() {
     if (!deleteTarget) return
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (createClient() as any)
-      .from('fin_installments')
-      .update({ status: 'inactive' })
-      .eq('id', deleteTarget.id)
-    toast('Conta removida', 'info')
-    setDeleteTarget(null)
-    load()
+    await (createClient() as any).from('fin_installments').update({ status: 'inactive' }).eq('id', deleteTarget.id)
+    toast('Conta removida', 'info'); setDeleteTarget(null); load()
   }
 
   if (loading) return (
@@ -281,8 +279,20 @@ export default function BillsPage() {
     </div>
   )
 
-  const myBills = bills.filter(b => b.user_id === userId)
+  const myBills    = bills.filter(b => b.user_id === userId)
   const familyBills = bills.filter(b => b.user_id !== userId)
+
+  // ── Dívida total (só parcelas com prazo definido) ──
+  const debtBills = bills.filter(b => !isFixed(b) && b.total_installments && b.user_id === userId)
+  const totalDebt = debtBills.reduce((sum, b) => {
+    const remaining = Math.max(0, (b.total_installments ?? 0) - b.paid_installments)
+    return sum + remaining * getMyShare(b)
+  }, 0)
+  const latestPayoff = debtBills.reduce((latest: Date | null, b) => {
+    const end = getBillEndDate(b)
+    if (!end) return latest
+    return !latest || end > latest ? end : latest
+  }, null)
 
   // ── Relatório: todos os vencimentos agrupados por mês ──
   interface ReportEntry { bill: Bill; inst: InstallmentRow }
@@ -290,7 +300,6 @@ export default function BillsPage() {
     billInstallments(bill).map(inst => ({ bill, inst }))
   )
   allEntries.sort((a, b) => a.inst.dueDate.getTime() - b.inst.dueDate.getTime())
-
   const byMonth: Record<string, ReportEntry[]> = {}
   allEntries.forEach(entry => {
     const key = `${entry.inst.dueDate.getFullYear()}-${String(entry.inst.dueDate.getMonth()).padStart(2, '0')}`
@@ -300,32 +309,35 @@ export default function BillsPage() {
   const monthKeys = Object.keys(byMonth).sort()
   const nowKey = `${new Date().getFullYear()}-${String(new Date().getMonth()).padStart(2, '0')}`
 
+  // ── Render de card de conta ──
   const renderBillCard = (bill: Bill) => {
     const fixedBill = isFixed(bill)
-    const insts = billInstallments(bill)
+    const myShare   = getMyShare(bill)
+    const insts     = billInstallments(bill)
     const paidCount = bill.paid_installments
-    const myShare = bill.split_type === 'members'
-      ? bill.installment_amount / (bill.split_count || 1)
-      : bill.installment_amount
     const isExpanded = expanded === bill.id
     const today = new Date(); today.setHours(0, 0, 0, 0)
-    const nextUnpaid = insts.find(i => !i.isPaid && i.dueDate >= today)
+    const nextUnpaid  = insts.find(i => !i.isPaid && i.dueDate >= today)
     const overdueCount = insts.filter(i => !i.isPaid && i.dueDate < today).length
     const canEdit = bill.user_id === userId
-
-    // Para contas fixas, calcular o mês de início formatado
     const startDate = new Date(bill.start_date + 'T12:00:00')
     const activeSince = startDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    const hasCustomSplit = bill.split_type === 'members' && bill.my_share_amount != null
+    const otherShare = hasCustomSplit
+      ? bill.installment_amount - bill.my_share_amount!
+      : bill.split_type === 'members'
+        ? bill.installment_amount - myShare
+        : null
 
     return (
       <Card key={bill.id} className={overdueCount > 0 ? '!border-red-200' : fixedBill ? '!border-[#C5D9C0]' : ''}>
         <CardContent className="p-0">
           <div className="px-5 pt-5 pb-4">
+            {/* Cabeçalho */}
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-sm font-semibold text-[#1A2E1A]">{bill.name}</h3>
-                  {/* Badge do tipo */}
                   {fixedBill ? (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#EEF5EB] border border-[#C5D9C0] text-[#3A6432]">
                       {FIXED_TYPE_LABELS[bill.type] || 'Fixa'}
@@ -342,7 +354,7 @@ export default function BillsPage() {
                   )}
                   {bill.split_type === 'members' && (
                     <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-600">
-                      <Users size={9} /> ÷{bill.split_count}
+                      <Users size={9} /> dividida
                     </span>
                   )}
                   {!canEdit && (
@@ -365,16 +377,22 @@ export default function BillsPage() {
               )}
             </div>
 
+            {/* Valor mensal */}
             <div className="flex items-baseline gap-2 mt-2.5">
               <span className="text-xl font-bold text-[#1A2E1A]">
                 {formatCurrency(myShare)}<span className="text-xs text-[#8FAA8F] font-normal ml-0.5">/mês</span>
               </span>
-              {bill.split_type === 'members' && (
-                <span className="text-xs text-[#8FAA8F]">total {formatCurrency(bill.installment_amount)} ÷ {bill.split_count}</span>
+              {otherShare !== null && otherShare > 0 && (
+                <span className="text-xs text-[#5A7A5A]">
+                  total {formatCurrency(bill.installment_amount)} · outra pessoa paga{' '}
+                  <span className="font-medium">{formatCurrency(otherShare)}</span>
+                  {' '}
+                  <span className="text-[#8FAA8F]">({(otherShare / bill.installment_amount * 100).toFixed(0)}%)</span>
+                </span>
               )}
             </div>
 
-            {/* Info de progresso — diferente para fixas e parcelamentos */}
+            {/* Progresso / info de conta fixa */}
             {fixedBill ? (
               <div className="mt-3 flex items-center justify-between">
                 <div>
@@ -391,7 +409,6 @@ export default function BillsPage() {
                 {(() => {
                   const totalCount = insts.length
                   const pct = totalCount > 0 ? (paidCount / totalCount) * 100 : 0
-                  const remaining = (totalCount - paidCount) * myShare
                   return (
                     <>
                       <div className="flex justify-between text-[10px] text-[#8FAA8F] mb-1.5">
@@ -402,14 +419,38 @@ export default function BillsPage() {
                         <div className="h-full rounded-full transition-all duration-500"
                           style={{ width: `${Math.min(pct, 100)}%`, background: pct >= 100 ? '#3A6432' : '#5A9A52' }} />
                       </div>
-                      <p className="text-[11px] text-[#8FAA8F] mt-1.5">{formatCurrency(remaining)} restante</p>
                     </>
                   )
                 })()}
               </div>
             )}
 
-            {nextUnpaid && (() => {
+            {/* Previsão de quitação — card destaque */}
+            {!fixedBill && bill.total_installments && (() => {
+              const remainingCount = Math.max(0, bill.total_installments - paidCount)
+              const remainingAmount = remainingCount * myShare
+              const endDate = getBillEndDate(bill)
+              const endStr = endDate
+                ? endDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+                : null
+              if (remainingCount === 0) return (
+                <p className="text-xs mt-2.5 font-semibold text-[#3A6432]">✓ Todas as parcelas pagas!</p>
+              )
+              return (
+                <div className="mt-3 flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#F5FAF4] border border-[#D8EDD4]">
+                  <Target size={15} className="text-[#5A7A5A] shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] text-[#5A7A5A]">
+                      <span className="font-semibold text-[#1A2E1A]">{remainingCount}</span> parcela{remainingCount !== 1 ? 's' : ''} restante{remainingCount !== 1 ? 's' : ''}
+                      {endStr && <> · Quita em <span className="font-semibold text-[#3A6432] capitalize">{endStr}</span></>}
+                    </p>
+                  </div>
+                  <p className="text-sm font-bold text-red-600 shrink-0">{formatCurrency(remainingAmount)}</p>
+                </div>
+              )
+            })()}
+
+            {nextUnpaid && !(!fixedBill && bill.total_installments) && (() => {
               const s = getDueStatus(nextUnpaid.dueDate, false)
               const dateStr = nextUnpaid.dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
               return (
@@ -418,15 +459,10 @@ export default function BillsPage() {
                 </p>
               )
             })()}
-            {!fixedBill && bill.paid_installments >= (bill.total_installments ?? Infinity) && bill.total_installments && (
-              <p className="text-xs mt-2 font-medium text-[#3A6432]">✓ Todas as parcelas pagas!</p>
-            )}
           </div>
 
-          <button
-            onClick={() => setExpanded(isExpanded ? null : bill.id)}
-            className="w-full flex items-center justify-center gap-1 py-2.5 border-t border-[#F0EDE6] text-xs text-[#8FAA8F] hover:text-[#3A6432] hover:bg-[#EEF5EB]/50 transition-colors"
-          >
+          <button onClick={() => setExpanded(isExpanded ? null : bill.id)}
+            className="w-full flex items-center justify-center gap-1 py-2.5 border-t border-[#F0EDE6] text-xs text-[#8FAA8F] hover:text-[#3A6432] hover:bg-[#EEF5EB]/50 transition-colors">
             {isExpanded
               ? <><ChevronUp size={13} /> Recolher</>
               : <><ChevronDown size={13} /> {fixedBill ? 'Ver meses' : `Ver ${bill.total_installments ?? insts.length} parcelas`}</>
@@ -474,6 +510,13 @@ export default function BillsPage() {
     )
   }
 
+  // ── Cálculo dinâmico da divisão no formulário ──
+  const totalAmt = parseFloat(form.installment_amount) || 0
+  const myShareAmt = parseFloat(form.my_share_amount) || 0
+  const otherShareAmt = totalAmt - myShareAmt
+  const otherSharePct = totalAmt > 0 && myShareAmt > 0 && myShareAmt < totalAmt
+    ? (otherShareAmt / totalAmt * 100).toFixed(1) : null
+
   return (
     <div className="px-4 py-4 max-w-2xl mx-auto lg:px-6 lg:py-6 space-y-3">
 
@@ -500,6 +543,65 @@ export default function BillsPage() {
       {/* ── TAB: CONTAS ── */}
       {tab === 'contas' && (
         <>
+          {/* Card de dívida total */}
+          {debtBills.length > 0 && (
+            <Card className="overflow-hidden">
+              <CardContent className="p-0">
+                <div className="px-5 py-4 bg-gradient-to-r from-[#1A2E1A] to-[#2C4A2C]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <TrendingDown size={14} className="text-[#8BB88A]" />
+                    <p className="text-[11px] font-bold text-[#8BB88A] uppercase tracking-widest">Dívida Ativa Total</p>
+                  </div>
+                  <div className="flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-3xl font-bold text-white">{formatCurrency(totalDebt)}</p>
+                      <p className="text-xs text-[#8BB88A] mt-1">
+                        {debtBills.length} financiamento{debtBills.length !== 1 ? 's' : ''}/consórcio{debtBills.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    {latestPayoff && (
+                      <div className="text-right shrink-0">
+                        <p className="text-[10px] text-[#8BB88A] font-medium">Quitação prevista</p>
+                        <p className="text-lg font-bold text-[#C8E6C4] capitalize mt-0.5">
+                          {latestPayoff.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Linha por bill */}
+                <ul className="divide-y divide-[#F0EDE6]">
+                  {debtBills.map(b => {
+                    const remaining = Math.max(0, (b.total_installments ?? 0) - b.paid_installments)
+                    const remainingAmt = remaining * getMyShare(b)
+                    const endDate = getBillEndDate(b)
+                    const endStr = endDate
+                      ? endDate.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+                      : '—'
+                    const pct = b.total_installments
+                      ? Math.min((b.paid_installments / b.total_installments) * 100, 100)
+                      : 0
+                    return (
+                      <li key={b.id} className="px-5 py-3">
+                        <div className="flex items-center justify-between gap-3 mb-1.5">
+                          <p className="text-xs font-semibold text-[#1A2E1A] truncate">{b.name}</p>
+                          <p className="text-xs font-bold text-red-600 shrink-0">{formatCurrency(remainingAmt)}</p>
+                        </div>
+                        <div className="h-1.5 bg-[#EEF5EB] rounded-full overflow-hidden mb-1">
+                          <div className="h-full bg-[#5A9A52] rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-[#8FAA8F]">
+                          <span>{b.paid_installments}/{b.total_installments} parcelas</span>
+                          <span className="capitalize">quita em {endStr}</span>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
           {bills.length === 0 && (
             <Card>
               <CardContent className="py-12 flex flex-col items-center gap-3 text-center">
@@ -540,10 +642,9 @@ export default function BillsPage() {
       {/* ── TAB: RELATÓRIO ── */}
       {tab === 'relatorio' && (
         <div className="space-y-4">
-          {/* Resumo geral */}
           <div className="grid grid-cols-3 gap-3">
             {(() => {
-              const paidAll = allEntries.filter(e => e.inst.isPaid).reduce((s, e) => s + e.inst.myShare, 0)
+              const paidAll   = allEntries.filter(e => e.inst.isPaid).reduce((s, e) => s + e.inst.myShare, 0)
               const unpaidAll = allEntries.filter(e => !e.inst.isPaid).reduce((s, e) => s + e.inst.myShare, 0)
               return (
                 <>
@@ -564,15 +665,14 @@ export default function BillsPage() {
             })()}
           </div>
 
-          {/* Por mês */}
           {monthKeys.map(key => {
             const [year, monthIdx] = key.split('-').map(Number)
             const entries = byMonth[key]
             const isCurrentMonth = key === nowKey
             const isPastMonth = key < nowKey
             const monthTotal = entries.reduce((s, e) => s + e.inst.myShare, 0)
-            const monthPaid = entries.filter(e => e.inst.isPaid).reduce((s, e) => s + e.inst.myShare, 0)
-            const monthLeft = monthTotal - monthPaid
+            const monthPaid  = entries.filter(e => e.inst.isPaid).reduce((s, e) => s + e.inst.myShare, 0)
+            const monthLeft  = monthTotal - monthPaid
             const overdueInMonth = entries.filter(e => !e.inst.isPaid && isPastMonth).length
 
             return (
@@ -581,9 +681,7 @@ export default function BillsPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold text-[#1A2E1A]">{MONTH_NAMES[monthIdx]} {year}</h3>
-                      {isCurrentMonth && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#3A6432] text-white font-medium">Atual</span>
-                      )}
+                      {isCurrentMonth && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#3A6432] text-white font-medium">Atual</span>}
                       {overdueInMonth > 0 && (
                         <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-600">
                           <AlertCircle size={9} /> {overdueInMonth}
@@ -600,61 +698,50 @@ export default function BillsPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                   <ul>
-                    {entries
-                      .sort((a, b) => a.inst.dueDate.getTime() - b.inst.dueDate.getTime())
-                      .map((entry) => {
-                        const { color, bg, border, label } = getDueStatus(entry.inst.dueDate, entry.inst.isPaid)
-                        const day = entry.inst.dueDate.getDate()
-                        const weekday = entry.inst.dueDate.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
-                        const fullDate = entry.inst.dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                        const key2 = `${entry.bill.id}-${entry.inst.number}`
-                        const fixedEntry = isFixed(entry.bill)
-                        return (
-                          <li key={key2} className={`flex items-center gap-3 px-4 py-3.5 border-b border-[#F0EDE6] last:border-0 ${entry.inst.isPaid ? 'bg-[#FAFAF9]' : ''}`}>
-                            <div className={`w-10 text-center rounded-lg py-1.5 shrink-0 border ${bg} ${border}`}>
-                              <p className={`text-sm font-bold leading-none ${color}`}>{String(day).padStart(2, '0')}</p>
-                              <p className={`text-[9px] mt-0.5 leading-none capitalize ${color}`}>{weekday}</p>
+                    {entries.sort((a, b) => a.inst.dueDate.getTime() - b.inst.dueDate.getTime()).map((entry) => {
+                      const { color, bg, border, label } = getDueStatus(entry.inst.dueDate, entry.inst.isPaid)
+                      const day = entry.inst.dueDate.getDate()
+                      const weekday = entry.inst.dueDate.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
+                      const fullDate = entry.inst.dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                      const key2 = `${entry.bill.id}-${entry.inst.number}`
+                      const fixedEntry = isFixed(entry.bill)
+                      return (
+                        <li key={key2} className={`flex items-center gap-3 px-4 py-3.5 border-b border-[#F0EDE6] last:border-0 ${entry.inst.isPaid ? 'bg-[#FAFAF9]' : ''}`}>
+                          <div className={`w-10 text-center rounded-lg py-1.5 shrink-0 border ${bg} ${border}`}>
+                            <p className={`text-sm font-bold leading-none ${color}`}>{String(day).padStart(2, '0')}</p>
+                            <p className={`text-[9px] mt-0.5 leading-none capitalize ${color}`}>{weekday}</p>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className={`text-sm font-medium truncate ${entry.inst.isPaid ? 'line-through text-[#8FAA8F]' : 'text-[#1A2E1A]'}`}>{entry.bill.name}</p>
+                              {fixedEntry && <Repeat size={10} className="text-[#8FAA8F] shrink-0" />}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <p className={`text-sm font-medium truncate ${entry.inst.isPaid ? 'line-through text-[#8FAA8F]' : 'text-[#1A2E1A]'}`}>
-                                  {entry.bill.name}
-                                </p>
-                                {fixedEntry && <Repeat size={10} className="text-[#8FAA8F] shrink-0" />}
-                              </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-xs text-[#8FAA8F]">
-                                  {fullDate} · {fixedEntry
-                                    ? 'Conta fixa'
-                                    : `${entry.inst.number}ª parcela${entry.bill.total_installments ? ` de ${entry.bill.total_installments}` : ''}`
-                                  }
-                                </span>
-                                {entry.bill.split_type === 'members' && (
-                                  <span className="text-[10px] text-blue-500">÷{entry.bill.split_count}</span>
-                                )}
-                              </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-xs text-[#8FAA8F]">
+                                {fullDate} · {fixedEntry
+                                  ? 'Conta fixa'
+                                  : `${entry.inst.number}ª parcela${entry.bill.total_installments ? ` de ${entry.bill.total_installments}` : ''}`
+                                }
+                              </span>
                             </div>
-                            <div className="text-right shrink-0">
-                              <p className={`text-sm font-semibold ${entry.inst.isPaid ? 'text-[#8FAA8F] line-through' : 'text-[#1A2E1A]'}`}>
-                                {formatCurrency(entry.inst.myShare)}
-                              </p>
-                              <p className={`text-xs font-medium ${color}`}>{label}</p>
-                            </div>
-                            <button
-                              onClick={() => togglePayment(entry.bill, entry.inst)}
-                              disabled={togglingPay === key2}
-                              className="shrink-0 ml-1"
-                            >
-                              {togglingPay === key2
-                                ? <div className="w-5 h-5 border-2 border-[#C5D9C0] border-t-[#3A6432] rounded-full animate-spin" />
-                                : entry.inst.isPaid
-                                  ? <CheckCircle2 size={18} className="text-[#3A6432]" />
-                                  : <Circle size={18} className="text-[#C5D9C0] hover:text-[#3A6432] transition-colors" />
-                              }
-                            </button>
-                          </li>
-                        )
-                      })}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className={`text-sm font-semibold ${entry.inst.isPaid ? 'text-[#8FAA8F] line-through' : 'text-[#1A2E1A]'}`}>
+                              {formatCurrency(entry.inst.myShare)}
+                            </p>
+                            <p className={`text-xs font-medium ${color}`}>{label}</p>
+                          </div>
+                          <button onClick={() => togglePayment(entry.bill, entry.inst)} disabled={togglingPay === key2} className="shrink-0 ml-1">
+                            {togglingPay === key2
+                              ? <div className="w-5 h-5 border-2 border-[#C5D9C0] border-t-[#3A6432] rounded-full animate-spin" />
+                              : entry.inst.isPaid
+                                ? <CheckCircle2 size={18} className="text-[#3A6432]" />
+                                : <Circle size={18} className="text-[#C5D9C0] hover:text-[#3A6432] transition-colors" />
+                            }
+                          </button>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </CardContent>
               </Card>
@@ -662,42 +749,30 @@ export default function BillsPage() {
           })}
 
           {monthKeys.length === 0 && (
-            <Card>
-              <CardContent className="py-10 text-center">
-                <p className="text-sm text-[#8FAA8F]">Nenhum vencimento encontrado</p>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="py-10 text-center"><p className="text-sm text-[#8FAA8F]">Nenhum vencimento encontrado</p></CardContent></Card>
           )}
         </div>
       )}
 
-      {/* ── Modal adicionar/editar ── */}
+      {/* ── Modal Nova/Editar conta ── */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Editar conta' : 'Nova conta'} size="md">
         <div className="p-5 flex flex-col gap-4">
 
-          {/* Categoria: Parcelamento ou Conta Fixa */}
+          {/* Categoria */}
           {!editing && (
             <div>
               <p className="text-xs font-semibold text-[#5A7A5A] mb-2">O que é esta conta?</p>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button"
                   onClick={() => setForm(f => ({ ...f, billCategory: 'parcela', type: 'installment' }))}
-                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 transition-colors ${
-                    form.billCategory === 'parcela'
-                      ? 'border-[#3A6432] bg-[#EEF5EB] text-[#3A6432]'
-                      : 'border-[#E2DECE] bg-white text-[#5A7A5A] hover:border-[#C5D9C0]'
-                  }`}>
+                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 transition-colors ${form.billCategory === 'parcela' ? 'border-[#3A6432] bg-[#EEF5EB] text-[#3A6432]' : 'border-[#E2DECE] bg-white text-[#5A7A5A] hover:border-[#C5D9C0]'}`}>
                   <CalendarClock size={20} />
                   <span className="text-xs font-semibold">Parcelamento</span>
                   <span className="text-[10px] text-center opacity-70">Consórcio, financiamento,<br/>cartão parcelado</span>
                 </button>
                 <button type="button"
                   onClick={() => setForm(f => ({ ...f, billCategory: 'fixa', type: 'agua' }))}
-                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 transition-colors ${
-                    form.billCategory === 'fixa'
-                      ? 'border-[#3A6432] bg-[#EEF5EB] text-[#3A6432]'
-                      : 'border-[#E2DECE] bg-white text-[#5A7A5A] hover:border-[#C5D9C0]'
-                  }`}>
+                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border-2 transition-colors ${form.billCategory === 'fixa' ? 'border-[#3A6432] bg-[#EEF5EB] text-[#3A6432]' : 'border-[#E2DECE] bg-white text-[#5A7A5A] hover:border-[#C5D9C0]'}`}>
                   <Repeat size={20} />
                   <span className="text-xs font-semibold">Conta Fixa</span>
                   <span className="text-[10px] text-center opacity-70">Água, luz, internet,<br/>condomínio, aluguel</span>
@@ -706,21 +781,18 @@ export default function BillsPage() {
             </div>
           )}
 
-          <Input label="Nome da conta" placeholder={form.billCategory === 'fixa' ? 'ex: Água SABESP, Luz Enel' : 'ex: Consórcio Honda, Financiamento Caixa'}
+          <Input label="Nome da conta"
+            placeholder={form.billCategory === 'fixa' ? 'ex: Água SABESP, Luz Enel' : 'ex: Consórcio Honda, Financiamento Caixa'}
             value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} autoFocus />
 
           {/* Tipo */}
           <div>
-            <p className="text-xs font-semibold text-[#5A7A5A] mb-2">
-              {form.billCategory === 'fixa' ? 'Categoria' : 'Tipo'}
-            </p>
+            <p className="text-xs font-semibold text-[#5A7A5A] mb-2">{form.billCategory === 'fixa' ? 'Categoria' : 'Tipo'}</p>
             {form.billCategory === 'fixa' ? (
               <div className="grid grid-cols-3 gap-1.5">
                 {Object.entries(FIXED_TYPE_LABELS).map(([v, label]) => (
                   <button key={v} type="button" onClick={() => setForm(f => ({ ...f, type: v }))}
-                    className={`py-2 px-1.5 text-xs font-medium rounded-xl border transition-colors text-center ${
-                      form.type === v ? 'bg-[#EEF5EB] border-[#C5D9C0] text-[#3A6432]' : 'bg-white border-[#E2DECE] text-[#5A7A5A] hover:border-[#C5D9C0]'
-                    }`}>
+                    className={`py-2 px-1.5 text-xs font-medium rounded-xl border transition-colors text-center ${form.type === v ? 'bg-[#EEF5EB] border-[#C5D9C0] text-[#3A6432]' : 'bg-white border-[#E2DECE] text-[#5A7A5A] hover:border-[#C5D9C0]'}`}>
                     {label}
                   </button>
                 ))}
@@ -729,9 +801,7 @@ export default function BillsPage() {
               <div className="grid grid-cols-3 gap-1.5">
                 {Object.entries(TYPE_LABELS).map(([v, label]) => (
                   <button key={v} type="button" onClick={() => setForm(f => ({ ...f, type: v }))}
-                    className={`py-2 px-2 text-xs font-medium rounded-xl border transition-colors ${
-                      form.type === v ? 'bg-[#EEF5EB] border-[#C5D9C0] text-[#3A6432]' : 'bg-white border-[#E2DECE] text-[#5A7A5A] hover:border-[#C5D9C0]'
-                    }`}>
+                    className={`py-2 px-2 text-xs font-medium rounded-xl border transition-colors ${form.type === v ? 'bg-[#EEF5EB] border-[#C5D9C0] text-[#3A6432]' : 'bg-white border-[#E2DECE] text-[#5A7A5A] hover:border-[#C5D9C0]'}`}>
                     {label}
                   </button>
                 ))}
@@ -743,18 +813,15 @@ export default function BillsPage() {
             value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
 
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              label={form.billCategory === 'fixa' ? 'Valor mensal (R$)' : 'Valor da parcela (R$)'}
+            <Input label={form.billCategory === 'fixa' ? 'Valor total da conta (R$)' : 'Valor total da parcela (R$)'}
               type="number" placeholder="0,00"
               value={form.installment_amount} onChange={e => setForm(f => ({ ...f, installment_amount: e.target.value }))} />
             <Input label="Dia do vencimento" type="number" placeholder="10"
               value={form.due_day} onChange={e => setForm(f => ({ ...f, due_day: e.target.value }))} />
           </div>
 
-          <Input
-            label={form.billCategory === 'fixa' ? 'Ativa desde' : 'Data da 1ª parcela'}
-            type="date"
-            value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
+          <Input label={form.billCategory === 'fixa' ? 'Ativa desde' : 'Data da 1ª parcela'}
+            type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
 
           {/* Duração — só para parcelamentos */}
           {form.billCategory === 'parcela' && (
@@ -781,7 +848,6 @@ export default function BillsPage() {
             </div>
           )}
 
-          {/* Nota para contas fixas */}
           {form.billCategory === 'fixa' && (
             <div className="flex items-start gap-2 p-3 rounded-xl bg-[#EEF5EB] border border-[#C5D9C0]">
               <Repeat size={14} className="text-[#3A6432] mt-0.5 shrink-0" />
@@ -789,23 +855,49 @@ export default function BillsPage() {
             </div>
           )}
 
-          {householdId && memberCount > 1 && (
+          {/* Divisão do valor */}
+          {householdId && (
             <div>
-              <p className="text-xs font-semibold text-[#5A7A5A] mb-2">Divisão</p>
+              <p className="text-xs font-semibold text-[#5A7A5A] mb-2">Divisão do valor</p>
               <div className="flex rounded-xl overflow-hidden border border-[#E2DECE]">
-                <button type="button" onClick={() => setForm(f => ({ ...f, split_type: 'personal' }))}
+                <button type="button"
+                  onClick={() => setForm(f => ({ ...f, split_type: 'personal', my_share_amount: '' }))}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors ${form.split_type === 'personal' ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F] hover:text-[#5A7A5A]'}`}>
-                  <User size={13} /> Só eu
+                  <User size={13} /> Só eu pago
                 </button>
-                <button type="button" onClick={() => setForm(f => ({ ...f, split_type: 'members' }))}
+                <button type="button"
+                  onClick={() => setForm(f => ({ ...f, split_type: 'members', my_share_amount: '' }))}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors border-l border-[#E2DECE] ${form.split_type === 'members' ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F] hover:text-[#5A7A5A]'}`}>
-                  <Users size={13} /> Dividir ({memberCount})
+                  <Users size={13} /> Dividir
                 </button>
               </div>
-              {form.split_type === 'members' && form.installment_amount && (
-                <p className="text-xs text-[#5A7A5A] mt-1.5 text-center">
-                  Cada pessoa paga <span className="font-semibold text-[#3A6432]">{formatCurrency(parseFloat(form.installment_amount) / memberCount)}</span>/mês
-                </p>
+
+              {form.split_type === 'members' && (
+                <div className="mt-3 space-y-2">
+                  <Input
+                    label="Minha parte (R$)"
+                    type="number"
+                    placeholder={totalAmt > 0 ? `ex: ${(totalAmt / 2).toFixed(2)}` : '0,00'}
+                    value={form.my_share_amount}
+                    onChange={e => setForm(f => ({ ...f, my_share_amount: e.target.value }))}
+                  />
+                  {otherSharePct && otherShareAmt > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#F5F2EE] border border-[#E2DECE]">
+                      <div>
+                        <p className="text-xs text-[#5A7A5A] font-medium">Outra pessoa paga</p>
+                        <p className="text-[11px] text-[#8FAA8F] mt-0.5">
+                          {otherSharePct}% do total
+                        </p>
+                      </div>
+                      <p className="text-lg font-bold text-[#1A2E1A]">{formatCurrency(otherShareAmt)}</p>
+                    </div>
+                  )}
+                  {myShareAmt > 0 && totalAmt > 0 && (
+                    <p className="text-[11px] text-[#8FAA8F] text-center">
+                      Você paga <span className="font-semibold text-[#3A6432]">{(myShareAmt / totalAmt * 100).toFixed(1)}%</span> do total de {formatCurrency(totalAmt)}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           )}

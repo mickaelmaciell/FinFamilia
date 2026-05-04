@@ -10,7 +10,8 @@ interface CatData { name: string; value: number; color: string }
 
 interface Installment {
   id: string; user_id: string; name: string; type: string
-  installment_amount: number; total_installments: number | null
+  installment_amount: number; my_share_amount?: number | null
+  total_installments: number | null
   paid_installments: number; start_date: string; due_day: number
   split_type: 'personal' | 'members'; split_count: number
   until_date?: string | null; household_id?: string | null; status: string
@@ -60,9 +61,10 @@ function getInstallmentStatus(bill: Installment, y2: number, m2: number): { amou
     const until = new Date(bill.until_date + 'T12:00:00')
     if (new Date(y2, m2 - 1, bill.due_day) > until) return null
   }
-  const myShare = bill.split_type === 'members'
-    ? bill.installment_amount / (bill.split_count || 1)
-    : bill.installment_amount
+  let myShare: number
+  if (bill.my_share_amount != null) myShare = bill.my_share_amount
+  else if (bill.split_type === 'members') myShare = bill.installment_amount / (bill.split_count || 1)
+  else myShare = bill.installment_amount
   return { amount: myShare, isPaid: instNum <= bill.paid_installments, instNum, dueDate: new Date(y2, m2 - 1, bill.due_day) }
 }
 
