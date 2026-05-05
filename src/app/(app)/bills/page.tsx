@@ -421,15 +421,34 @@ export default function BillsPage() {
   const showInputMode     = form.billCategory === 'parcela' && form.mode === 'installments' && formNumParcelas > 1
   const isInputTotal      = form.inputMode === 'total' && showInputMode
 
+  // Número de parcelas efetivamente divididas
+  const splitN = form.splitInstCount === 'specific' && form.splitInstCountValue
+    ? Math.min(Math.max(parseInt(form.splitInstCountValue) || 0, 0), formNumParcelas)
+    : formNumParcelas
+  const hasSplitLimit = form.splitInstCount === 'specific' && splitN < formNumParcelas
+
   // Converter para valor por parcela (base de todos os cálculos)
-  const perInstAmt   = isInputTotal ? formInputInstAmt / formNumParcelas : formInputInstAmt
-  const myPerInst    = isInputTotal ? formMyShareInput / formNumParcelas : formMyShareInput
-  const myTotal      = myPerInst * formNumParcelas
-  const otherPerInst = perInstAmt > 0 ? Math.max(0, perInstAmt - myPerInst) : 0
-  const otherTotal   = otherPerInst * formNumParcelas
-  const myPct        = perInstAmt > 0 && myPerInst > 0 ? (myPerInst / perInstAmt * 100) : 0
-  const otherPct     = 100 - myPct
-  const showCalc     = form.split_type === 'members' && perInstAmt > 0 && formMyShareInput > 0 && myPerInst < perInstAmt && myPerInst > 0
+  const perInstAmt    = isInputTotal ? formInputInstAmt / formNumParcelas : formInputInstAmt
+  const myPerInst     = isInputTotal ? formMyShareInput / formNumParcelas : formMyShareInput
+  const otherPerInst  = perInstAmt > 0 ? Math.max(0, perInstAmt - myPerInst) : 0
+
+  // Totais considerando o limite de divisão:
+  //   • familiar só paga nas primeiras splitN parcelas
+  //   • eu pago minha parte nas splitN divididas + valor cheio nas parcelas restantes sozinho
+  const otherTotal    = otherPerInst * splitN
+  const myTotalSplit  = myPerInst * splitN                            // minha parte durante a divisão
+  const myTotalSolo   = perInstAmt * (formNumParcelas - splitN)       // parcelas que pago sozinho
+  const myTotal       = myTotalSplit + myTotalSolo
+  const grandTotal    = perInstAmt * formNumParcelas                  // custo total da conta
+
+  // Percentuais sobre o custo total da conta
+  const myPct         = grandTotal > 0 ? (myTotal / grandTotal * 100) : 0
+  const otherPct      = grandTotal > 0 ? (otherTotal / grandTotal * 100) : 0
+  // Percentual por parcela (durante as parcelas divididas)
+  const myPctPerInst  = perInstAmt > 0 ? (myPerInst / perInstAmt * 100) : 0
+  const otherPctPerInst = 100 - myPctPerInst
+
+  const showCalc      = form.split_type === 'members' && perInstAmt > 0 && formMyShareInput > 0 && myPerInst < perInstAmt && myPerInst > 0
 
   // ── Renderizar card de conta ──────────────────────────────────────────────
   const renderBillCard = (bill: Bill) => {
@@ -1054,7 +1073,7 @@ export default function BillsPage() {
                   {/* Cálculo em tempo-real */}
                   {showCalc && (
                     <div className="space-y-1.5">
-                      {/* Mostrar breakdown por parcela quando em modo total */}
+                      {/* Breakdown por parcela quando em modo total */}
                       {isInputTotal && formNumParcelas > 1 && (
                         <div className="px-3 py-2 rounded-lg bg-[#EEF5EB] border border-[#C5D9C0]">
                           <p className="text-[11px] text-[#5A7A5A]">
@@ -1067,27 +1086,56 @@ export default function BillsPage() {
                           </p>
                         </div>
                       )}
-                      <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#F5F2EE] border border-[#E2DECE]">
-                        <div>
-                          <p className="text-xs font-semibold text-[#5A7A5A]">
-                            {form.splitWithUserId
-                              ? `${otherMembers.find(m => m.id === form.splitWithUserId)?.name ?? 'Outra pessoa'} paga`
-                              : 'Outra pessoa paga'}
+
+                      {/* Bloco do familiar */}
+                      {(() => {
+                        const partnerLabel = form.splitWithUserId
+                          ? (otherMembers.find(m => m.id === form.splitWithUserId)?.name ?? 'Outra pessoa')
+                          : 'Outra pessoa'
+                        return (
+                          <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#F5F2EE] border border-[#E2DECE]">
+                            <div>
+                              <p className="text-xs font-semibold text-[#5A7A5A]">{partnerLabel} paga</p>
+                              <p className="text-[11px] text-[#8FAA8F] mt-0.5">
+                                {otherPctPerInst.toFixed(1)}% por parcela · {formatCurrency(otherPerInst)}/parcela
+                              </p>
+                              {hasSplitLimit && (
+                                <p className="text-[11px] text-amber-600 mt-0.5 font-medium">
+                                  nas primeiras {splitN} parcelas
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="text-base font-bold text-[#1A2E1A]">{formatCurrency(otherTotal)}</p>
+                              <p className="text-[10px] text-[#8FAA8F]">em {splitN} parcela{splitN !== 1 ? 's' : ''}</p>
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Resumo do que você paga */}
+                      {hasSplitLimit ? (
+                        <div className="px-3 py-2.5 rounded-xl bg-[#EEF5EB] border border-[#C5D9C0] space-y-1">
+                          <p className="text-[11px] text-[#5A7A5A] font-semibold">Você paga no total:</p>
+                          <p className="text-[11px] text-[#5A7A5A]">
+                            {formatCurrency(myPerInst)}/parc × {splitN} divididas
+                            = <span className="font-semibold">{formatCurrency(myTotalSplit)}</span>
                           </p>
-                          <p className="text-[11px] text-[#8FAA8F] mt-0.5">
-                            {otherPct.toFixed(1)}% do total
-                            {formNumParcelas > 1 && ` · ${formatCurrency(otherPerInst)}/parcela`}
+                          <p className="text-[11px] text-[#5A7A5A]">
+                            {formatCurrency(perInstAmt)}/parc × {formNumParcelas - splitN} sozinho
+                            = <span className="font-semibold">{formatCurrency(myTotalSolo)}</span>
+                          </p>
+                          <p className="text-xs font-bold text-[#3A6432] border-t border-[#C5D9C0] pt-1 mt-1">
+                            Total: {formatCurrency(myTotal)}
+                            <span className="text-[#8FAA8F] font-normal ml-1">({myPct.toFixed(1)}% da conta)</span>
                           </p>
                         </div>
-                        <div className="text-right">
-                          <p className="text-base font-bold text-[#1A2E1A]">{formatCurrency(otherTotal)}</p>
-                          {formNumParcelas > 1 && <p className="text-[10px] text-[#8FAA8F]">em {formNumParcelas} parcelas</p>}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-[#8FAA8F] text-center">
-                        Você paga <span className="font-semibold text-[#3A6432]">{myPct.toFixed(1)}%</span> do total ·{' '}
-                        <span className="font-semibold text-[#1A2E1A]">{formatCurrency(myTotal)}</span> no total
-                      </p>
+                      ) : (
+                        <p className="text-[11px] text-[#8FAA8F] text-center">
+                          Você paga <span className="font-semibold text-[#3A6432]">{myPctPerInst.toFixed(1)}%</span> por parcela ·{' '}
+                          <span className="font-semibold text-[#1A2E1A]">{formatCurrency(myTotal)}</span> no total
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
