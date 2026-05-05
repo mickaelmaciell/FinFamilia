@@ -389,9 +389,9 @@ export default function BillsPage() {
   const familyBills = bills.filter(b => b.user_id !== userId)
 
   const debtBills = myBills.filter(b => !isFixed(b) && b.total_installments)
+  // totalDebt usa billInstallments para respeitar o split_installments_count por parcela
   const totalDebt = debtBills.reduce((sum, b) => {
-    const remaining = Math.max(0, (b.total_installments ?? 0) - b.paid_installments)
-    return sum + remaining * getOwnerShare(b)
+    return sum + billInstallments(b, userId).filter(i => !i.isPaid).reduce((s, i) => s + i.myShare, 0)
   }, 0)
   const latestPayoff = debtBills.reduce((latest: Date | null, b) => {
     const end = getBillEndDate(b); if (!end) return latest
@@ -574,10 +574,12 @@ export default function BillsPage() {
 
             {/* Previsão de quitação */}
             {!fixedBill && bill.total_installments && (() => {
-              const remaining   = Math.max(0, bill.total_installments - paidCount)
-              const remainingAmt = remaining * myShare
-              const endDate     = getBillEndDate(bill)
-              const endStr      = endDate?.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) ?? null
+              // Usa insts (já calculado com splitLimit por parcela) para o valor restante correto
+              const unpaidInsts  = insts.filter(i => !i.isPaid)
+              const remaining    = unpaidInsts.length
+              const remainingAmt = unpaidInsts.reduce((s, i) => s + i.myShare, 0)
+              const endDate      = getBillEndDate(bill)
+              const endStr       = endDate?.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) ?? null
               if (remaining === 0) return (
                 <p className="text-xs mt-2.5 font-semibold text-[#3A6432]">✓ Todas as parcelas pagas!</p>
               )
@@ -702,8 +704,9 @@ export default function BillsPage() {
                 </div>
                 <ul className="divide-y divide-[#F0EDE6]">
                   {debtBills.map(b => {
-                    const rem    = Math.max(0, (b.total_installments ?? 0) - b.paid_installments)
-                    const remAmt = rem * getOwnerShare(b)
+                    const unpaid = billInstallments(b, userId).filter(i => !i.isPaid)
+                    const rem    = unpaid.length
+                    const remAmt = unpaid.reduce((s, i) => s + i.myShare, 0)
                     const end    = getBillEndDate(b)
                     const endStr = end?.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }) ?? '—'
                     const pct    = b.total_installments
