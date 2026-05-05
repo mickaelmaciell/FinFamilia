@@ -25,6 +25,7 @@ interface Bill {
   installment_amount: number
   my_share_amount?: number | null
   split_with_user_id?: string | null
+  split_installments_count?: number | null   // null = todas as parcelas
   total_installments: number | null
   paid_installments: number
   until_date?: string | null
@@ -115,8 +116,9 @@ function isFixed(bill: Bill) { return FIXED_BILL_TYPES.includes(bill.type) }
 // Geração de parcelas
 // ─────────────────────────────────────────────────────────────────────────────
 function billInstallments(bill: Bill, viewerId: string): InstallmentRow[] {
-  const fixedBill = isFixed(bill)
-  const myShare = getViewerShare(bill, viewerId)
+  const fixedBill  = isFixed(bill)
+  const isOwner    = bill.user_id === viewerId
+  const splitLimit = bill.split_installments_count ?? null   // null = todas
   const start = new Date(bill.start_date + 'T12:00:00')
 
   let startNum = 1
@@ -141,8 +143,20 @@ function billInstallments(bill: Bill, viewerId: string): InstallmentRow[] {
     count = 60
   }
 
+  // Familiar só vê as parcelas onde participa
+  if (!isOwner && splitLimit != null) {
+    count = Math.min(count, Math.max(0, splitLimit - startNum + 1))
+  }
+
+  const viewerSplitShare = getViewerShare(bill, viewerId)
+
   return Array.from({ length: count }, (_, i) => {
     const num = startNum + i
+    // Após o limite de divisão, o dono paga o valor cheio sozinho
+    const withinSplit = splitLimit == null || num <= splitLimit
+    const myShare = withinSplit
+      ? viewerSplitShare
+      : bill.installment_amount  // dono paga tudo quando a divisão terminou
     return {
       number: num,
       dueDate: new Date(start.getFullYear(), start.getMonth() + num - 1, bill.due_day),
@@ -189,6 +203,8 @@ const EMPTY_FORM = {
   start_date: new Date().toISOString().split('T')[0],
   split_type: 'personal' as 'personal' | 'members',
   splitWithUserId: '',
+  splitInstCount: 'all' as 'all' | 'specific',  // 'all' = todas as parcelas
+  splitInstCountValue: '',                        // número quando 'specific'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,6 +287,8 @@ export default function BillsPage() {
       start_date: bill.start_date,
       split_type: bill.split_type,
       splitWithUserId: bill.split_with_user_id || '',
+      splitInstCount: bill.split_installments_count ? 'specific' : 'all',
+      splitInstCountValue: bill.split_installments_count ? String(bill.split_installments_count) : '',
     })
     setShowModal(true)
   }
@@ -306,6 +324,8 @@ export default function BillsPage() {
       installment_amount: totalInstAmt,
       my_share_amount: mySharePerInst,
       split_with_user_id: form.split_type === 'members' && form.splitWithUserId ? form.splitWithUserId : null,
+      split_installments_count: form.split_type === 'members' && form.splitInstCount === 'specific' && form.splitInstCountValue
+        ? parseInt(form.splitInstCountValue) : null,
       total_installments: form.billCategory === 'parcela' && form.mode === 'installments' && form.total_installments
         ? parseInt(form.total_installments) : null,
       until_date: form.billCategory === 'parcela' && form.mode === 'until_date' && form.until_date
@@ -461,6 +481,7 @@ export default function BillsPage() {
                   {hasSplit && (
                     <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-600">
                       <Users size={9} /> dividida{partnerName ? ` com ${partnerName}` : ''}
+                      {bill.split_installments_count != null && ` (${bill.split_installments_count}x)`}
                     </span>
                   )}
                   {!canEdit && (
@@ -495,6 +516,9 @@ export default function BillsPage() {
                     ? <>{partnerName || 'outra pessoa'} paga <span className="font-medium">{formatCurrency(otherShare)}</span> <span className="text-[#8FAA8F]">({(otherShare / bill.installment_amount * 100).toFixed(0)}%)</span></>
                     : <>{partnerName || 'outra pessoa'} paga <span className="font-medium">{formatCurrency(ownerShare)}</span> <span className="text-[#8FAA8F]">({(ownerShare / bill.installment_amount * 100).toFixed(0)}%)</span></>
                   }
+                  {bill.split_installments_count != null && (
+                    <span className="text-[#8FAA8F]"> · nas {bill.split_installments_count}ª parcelas</span>
+                  )}
                 </span>
               )}
             </div>
@@ -956,6 +980,42 @@ export default function BillsPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Quantas parcelas dividir */}
+                  <div>
+                    <p className="text-xs text-[#5A7A5A] font-semibold mb-2">Por quantas parcelas dividir?</p>
+                    <div className="flex rounded-xl overflow-hidden border border-[#E2DECE]">
+                      <button type="button"
+                        onClick={() => setForm(f => ({ ...f, splitInstCount: 'all', splitInstCountValue: '' }))}
+                        className={`flex-1 py-2.5 text-sm font-medium transition-colors ${form.splitInstCount === 'all' ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F] hover:text-[#5A7A5A]'}`}>
+                        Todas as parcelas
+                      </button>
+                      <button type="button"
+                        onClick={() => setForm(f => ({ ...f, splitInstCount: 'specific' }))}
+                        className={`flex-1 py-2.5 text-sm font-medium transition-colors border-l border-[#E2DECE] ${form.splitInstCount === 'specific' ? 'bg-[#EEF5EB] text-[#3A6432]' : 'text-[#8FAA8F] hover:text-[#5A7A5A]'}`}>
+                        Quantidade específica
+                      </button>
+                    </div>
+                    {form.splitInstCount === 'specific' && (
+                      <div className="mt-2">
+                        <Input
+                          label="Dividir nas primeiras X parcelas"
+                          type="text" inputMode="numeric"
+                          placeholder={`ex: ${Math.ceil(formNumParcelas / 2) || 6}`}
+                          value={form.splitInstCountValue}
+                          onChange={e => setForm(f => ({ ...f, splitInstCountValue: e.target.value.replace(/\D/g, '') }))}
+                        />
+                        {form.splitInstCountValue && parseInt(form.splitInstCountValue) > 0 && formNumParcelas > 1 && (
+                          <p className="text-[11px] text-[#8FAA8F] mt-1 pl-1">
+                            Parcelas 1 a <span className="font-semibold text-[#5A7A5A]">{form.splitInstCountValue}</span> divididas
+                            {parseInt(form.splitInstCountValue) < formNumParcelas && (
+                              <> · parcelas {parseInt(form.splitInstCountValue) + 1} a {formNumParcelas} você paga sozinho</>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Minha parte */}
                   <div>
